@@ -17,7 +17,7 @@ Examples can be found in the  "examples/" directory.
  
 4) Bugs:
 
-Please report bugs to hahn@physik.fu-berlin.de or on https://github.com/BAMresearch/TOPAS-CellModels
+Please report bugs to marc.hahn@uni-potsdam.de or on https://github.com/MarcBHahn/TOPAS-CellModels
 
 5) Literature:
 

@@ -115,6 +115,10 @@ private:
 	G4String fpHSolvent;
 	G4double fpHSolventConcentration;
 	G4double fpHValue;
+	G4double fMonovalentSalt; // NaCl, KCl, ...
+	G4double fDivalentSalt;   // MgCl2 ...
+	G4double fTrivalentSalt;   // FeCl3  ...
+	
 	
 	G4bool fAllTotallyDiffusionControlled;
 	
@@ -163,6 +167,10 @@ public:
 	std::vector<G4double> GetH2SO4ComponentsConcentrationP(G4double);
 	std::vector<G4double> GetH2SO4ComponentsConcentrationPH(G4double);
 	G4double GetIonicStrength(std::vector<G4double>);
+	G4double GetIonicStrengthFromSalts(G4double fMonovalentSalt, G4double fDivalentSalt, G4double fTrivalentSalt);
+	G4double GetPhosphateBufferIonicStrength(G4double pH);
+
+
 	inline std::map<G4String, G4int> GetMoleculeIDs() {return fMoleculesID;};
 	inline std::map<G4int, G4String> GetMoleculeNames() { return fMoleculesName;};
 	G4double IonicRate(G4double, TsMolecularReaction);
