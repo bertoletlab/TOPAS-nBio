@@ -361,6 +361,22 @@ fKick(false), fAllTotallyDiffusionControlled(false)
     if ( fPm->ParameterExists("Ch/"+chemistryList+"/ModelAcidPropertiesFromSubstance") ) {
         fpHSolventConcentration = 0.0;
         fpHValue                = 7.1;
+		
+		if (fPm->ParameterExists("Ch/"+chemistryList+"/MonovalentSalt")){
+			fMonovalentSalt = fPm->GetDoubleParameter("Ch/"+chemistryList+"/MonovalentSalt","molar concentration");
+		}
+		else{fMonovalentSalt=0.0;}
+
+		if (fPm->ParameterExists("Ch/"+chemistryList+"/DivalentSalt")){
+			fDivalentSalt = fPm->GetDoubleParameter("Ch/"+chemistryList+"/DivalentSalt","molar concentration");
+		}
+		else{fDivalentSalt=0.0;}
+		
+		if (fPm->ParameterExists("Ch/"+chemistryList+"/TrivalentSalt")){
+			fTrivalentSalt = fPm->GetDoubleParameter("Ch/"+chemistryList+"/TrivalentSalt","molar concentration");
+		}
+		else{fTrivalentSalt=0.0;}
+		
         
         fpHSolvent = fPm->GetStringParameter("Ch/"+chemistryList+"/ModelAcidPropertiesFromSubstance");
         G4StrUtil::to_lower(fpHSolvent);
@@ -380,20 +396,6 @@ fKick(false), fAllTotallyDiffusionControlled(false)
             AdjustReactionRateForPH("PH");
         }
         
-       	if (fPm->ParameterExists("Ch/"+chemistryList+"/MonovalentSalt")){
-			fMonovalentSalt = fPm->GetDoubleParameter("Ch/"+chemistryList+"/MonovalentSalt","molar concentration");
-		}
-		else{fMonovalentSalt=0.0;}
-
-		if (fPm->ParameterExists("Ch/"+chemistryList+"/DivalentSalt")){
-			fDivalentSalt = fPm->GetDoubleParameter("Ch/"+chemistryList+"/DivalentSalt","molar concentration");
-		}
-		else{fDivalentSalt=0.0;}
-		
-		if (fPm->ParameterExists("Ch/"+chemistryList+"/TrivalentSalt")){
-			fTrivalentSalt = fPm->GetDoubleParameter("Ch/"+chemistryList+"/TrivalentSalt","molar concentration");
-		}
-		else{fTrivalentSalt=0.0;}
         
         G4cout << "======================================== performed ph Scaling ===========================================" << G4endl;
         ResolveReactionParameters();
@@ -1038,25 +1040,34 @@ std::vector<G4double> TsIRTConfiguration::GetH2SO4ComponentsConcentrationPH(G4do
 }
 
 
-G4double TsIRTConfiguration::GetPhosphateBufferIonicStrength(G4double pH) {
-	// only valid around pH 7.4 with 12mM Phosphate buffer component which is fixed for standard PBS
-	// pKa2 H_2PO_4^- <-> HPO_4^2- is 7.2 and the other two pKas are 2.15 and 12.35
-	// -> approximate by the Henderson Hasselbach equation pH=pKa + log_10(HPO_4^2-/H_2PO_4^-) (https://goldbook.iupac.org/terms/view/H02781)
-	// Reminder: adjust Ionic strength later on for standard PBS salts: 137 mM NaCl and 2.7mM KCl
-
+std::vector<G4double> TsIRTConfiguration::GetPhosphateBufferComponentsConcentrationPHandIonicStrength(G4double pH) {
+	
 	G4double _Kw = 1E-14;
 	G4double _H_pos = pow(10,-pH);
 	G4double _OH_me   = _Kw / _H_pos;
 	
+	// only valid around pH 7.4 with 12mM Phosphate buffer component which is fixed for standard PBS
+	// pKa2 H_2PO_4^- <-> HPO_4^2- is 7.2 and the other two pKas are 2.15 and 12.35
+	// keep these fix, but include already for future extensions
+	G4double _H3PO_4 = 0.0;
+	G4double _PO_4 = 0.0;
+	G4double pKa1 = 2.1;
+	G4double pKa3 = 12.3;
+	
+	// -> approximate by the Henderson Hasselbach equation pH=pKa + log_10(HPO_4^2-/H_2PO_4^-) (https://goldbook.iupac.org/terms/view/H02781)
+	// Reminder: adjust Ionic strength later on for standard PBS salts: 137 mM NaCl and 2.7mM KCl
 	G4double pKa2 = 7.2;
 	G4double buffer_component_concentration = 0.012; // M
 	G4double component_ratio = pow(10, pH-pKa2);
 	G4double _H_2PO_4 =  buffer_component_concentration / (1.0 + component_ratio );
 	G4double _HPO_4   = component_ratio * _H_2PO_4;
 	
-	G4double I = 0.5 * (_H_pos + _H_2PO_4 + ( _HPO_4* 4) + _OH_me);
-	return I;
+	G4double IonicStrength = 0.5 * (_H_pos + _H_2PO_4 + ( _HPO_4* 4) + ( _PO_4* 9) + _OH_me);
+	std::vector<G4double> Results = {IonicStrength, _H_pos , _H3PO_4, _H_2PO_4 , _HPO_4, _PO_4, _OH_me};
+	return Results;
+	
 }
+
 
 
 
@@ -1112,7 +1123,7 @@ G4double TsIRTConfiguration::GetIonicStrength(std::vector<G4double> Components) 
 G4double TsIRTConfiguration::GetIonicStrengthFromSalts(G4double fMonovalentSalt = 0.0, G4double fDivalentSalt = 0.0, G4double fTrivalentSalt = 0.0) {
 	//assuming all counterions with q=+-1
 	G4double counterions = fMonovalentSalt + 2.0 * fDivalentSalt + 3.0 * fTrivalentSalt;
-	G4double I = 0.5 * ( fMonovalentSalt + 4* fDivalentSalt + 3 + 9*fTrivalentSalt + counterions);
+	G4double I = 0.5 * ( fMonovalentSalt + 4* fDivalentSalt + 9*fTrivalentSalt + counterions);
 	return I;
 }
 
@@ -1357,12 +1368,17 @@ void TsIRTConfiguration::AdjustReactionAndDiffusionRateForTemperature() {
 
 void TsIRTConfiguration::AdjustReactionRateForPH(G4String pHOrConcentration) {
     std::vector<G4double> AcidComponents;
+    std::vector<G4double> PhosphateComponents;
     G4double Ionic   = 0.0;
     G4double HCon    = 0.0;
     G4double HCon25  = 1.00E-7;
     G4double OHCon   = 0.0;
     G4double OHCon25 = 1.00E-7;
     G4double HSO4Con = 0.0;
+	G4double PO4Con = 0.0;
+	G4double HPO4Con = 0.0;
+	G4double H2PO4Con = 0.0;
+	G4double H3PO4Con = 0.0;
     
     if (pHOrConcentration == "PH" && fpHSolvent == "h2so4") {
         AcidComponents = GetH2SO4ComponentsConcentrationPH(fpHValue);
@@ -1391,36 +1407,35 @@ void TsIRTConfiguration::AdjustReactionRateForPH(G4String pHOrConcentration) {
     }
 
 	// PB: Assume standard values for phosphate buffer around pH7.4
-	else if (fpHSolvent == "pb") {
+	else if (fpHSolvent == "PB" || fpHSolvent == "PBS" ) {
+	    PhosphateComponents          = GetPhosphateBufferComponentsConcentrationPHandIonicStrength(fpHValue);
+		Ionic =   PhosphateComponents[0];
+		HCon  =   PhosphateComponents[1];
+        OHCon =   PhosphateComponents[6];
+		PO4Con = PhosphateComponents[2];
+		HPO4Con  = PhosphateComponents[3];
+		H2PO4Con = PhosphateComponents[4];
+		H3PO4Con  = PhosphateComponents[5];
+        G4cout << "-- Adjust ionic strength for phosphate buffer at pH "<< fpHValue<< G4endl;
 		
-        HCon  = pow(10,-fpHValue);
-        OHCon = 1E-14 / HCon;
-        AcidComponents = {HCon, 0.0, 0.0, OHCon, 0.0, 0.0};
-        Ionic          = GetPhosphateBufferIonicStrength(fpHValue);
-        G4cout << "-- Adjust ionic strength for phosphate buffer (PB) at pH "<< fpHValue<< G4endl;
+		if (fpHSolvent == "PBS" ){
+			// Add monovalent salts from 1xPBS
+			// with physiological salts of 137 mM NaCl and 2.7mM KCl
+			G4double PBS_salts_conc = 139.7e-3;
+			Ionic = Ionic + GetIonicStrengthFromSalts(PBS_salts_conc,0.0,0.0);
+			G4cout << "-- Add 139.7mM monovalent salts for phosphate buffered saline (PBS)." << G4endl;
+		}
     }
 
-    // PBS: Assume standard values for phosphate buffer saline around pH7.4
-   	// with physiological salts of 137 mM NaCl and 2.7mM KCl
-	else if (fpHSolvent == "pbs") {
-
-	    HCon  = pow(10,-fpHValue);
-        OHCon = 1E-14 / HCon;
-        AcidComponents = {HCon, 0.0, 0.0, OHCon, 0.0, 0.0};
-        Ionic          = GetPhosphateBufferIonicStrength(fpHValue);
-		// Add monovalent salts from 1xPBS
-		G4double PBS_salts_conc = 139.7e-3;
-		Ionic = Ionic + GetIonicStrengthFromSalts(PBS_salts_conc,0.0,0.0);
-        G4cout << "-- Adjust ionic strength for phosphate buffered saline (PBS) at pH " << fpHValue<< G4endl;
-    }
-    
     else {
         G4cout << "-- Is doing nothing " << pHOrConcentration << " " << fpHSolvent << G4endl;
     }
     G4cout << G4endl;
 	
     G4cout << " ###--- Add Salt effects to Ionic strength ---###" << G4endl;
-	Ionic = Ionic + GetIonicStrengthFromSalts(fMonovalentSalt,fDivalentSalt,fTrivalentSalt);
+	G4double additionalIonicFromSalts = GetIonicStrengthFromSalts(fMonovalentSalt,fDivalentSalt,fTrivalentSalt);
+	G4cout << " ###--- Add additional ionic strength from salts: " << additionalIonicFromSalts <<G4endl;
+	Ionic = Ionic + additionalIonicFromSalts;
 	
     G4cout << " ###-------- pH Scaling Starts ---------###" << G4endl;
     
@@ -1538,6 +1553,16 @@ void TsIRTConfiguration::AdjustReactionRateForPH(G4String pHOrConcentration) {
                 setScavenging(fReactions[i].scavengingCapacity * OHCon / OHCon25);
             } else if (ReactB == "HSO4^-1") {
                 setScavenging(fReactions[i].scavengingCapacity * HSO4Con);
+			} else if (ReactB == "H3PO4^0") {
+                setScavenging(fReactions[i].scavengingCapacity * H2PO4Con);
+            } 
+            // Add dihydrogen phosphate Ion to the reactions with e_aq-  + H2P04- 1.9 X 10^7/Ms (Buxton 343 at pH5-7)
+            else if (ReactB == "H2PO4^-1") {
+                setScavenging(fReactions[i].scavengingCapacity * H2PO4Con);
+            } else if (ReactB == "HPO4^-2") {
+                setScavenging(fReactions[i].scavengingCapacity * HPO4Con);
+            }else if (ReactB == "PO4^-3") {
+                setScavenging(fReactions[i].scavengingCapacity * PO4Con);
             }
         }
         
