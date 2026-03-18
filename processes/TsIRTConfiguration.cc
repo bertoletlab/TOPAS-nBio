@@ -1407,7 +1407,7 @@ void TsIRTConfiguration::AdjustReactionRateForPH(G4String pHOrConcentration) {
     }
 
 	// PB: Assume standard values for phosphate buffer around pH7.4
-	else if (fpHSolvent == "PB" || fpHSolvent == "PBS" ) {
+	else if (fpHSolvent == "pb" || fpHSolvent == "pbs" ) {
 	    PhosphateComponents          = GetPhosphateBufferComponentsConcentrationPHandIonicStrength(fpHValue);
 		Ionic =   PhosphateComponents[0];
 		HCon  =   PhosphateComponents[1];
@@ -1418,7 +1418,7 @@ void TsIRTConfiguration::AdjustReactionRateForPH(G4String pHOrConcentration) {
 		H3PO4Con  = PhosphateComponents[5];
         G4cout << "-- Adjust ionic strength for phosphate buffer at pH "<< fpHValue<< G4endl;
 		
-		if (fpHSolvent == "PBS" ){
+		if (fpHSolvent == "pbs" ){
 			// Add monovalent salts from 1xPBS
 			// with physiological salts of 137 mM NaCl and 2.7mM KCl
 			G4double PBS_salts_conc = 139.7e-3;
