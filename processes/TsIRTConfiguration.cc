@@ -1412,10 +1412,10 @@ void TsIRTConfiguration::AdjustReactionRateForPH(G4String pHOrConcentration) {
 		Ionic =   PhosphateComponents[0];
 		HCon  =   PhosphateComponents[1];
         OHCon =   PhosphateComponents[6];
-		PO4Con = PhosphateComponents[2];
-		HPO4Con  = PhosphateComponents[3];
-		H2PO4Con = PhosphateComponents[4];
-		H3PO4Con  = PhosphateComponents[5];
+		H3PO4Con = PhosphateComponents[2];
+		H2PO4Con = PhosphateComponents[3];
+		HPO4Con = PhosphateComponents[4];
+		PO4Con = PhosphateComponents[5];
         G4cout << "-- Adjust ionic strength for phosphate buffer at pH "<< fpHValue<< G4endl;
 		
 		if (fpHSolvent == "pbs" ){
