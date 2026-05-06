@@ -43,6 +43,7 @@
 #include "G4DNAChargeDecrease.hh"
 #include "G4DNAChargeIncrease.hh"
 
+#include "G4DNARuddIonisationExtendedModel.hh"
 #include "G4DNARelativisticIonisationModel.hh"
 #include "G4DNAPlasmonExcitation.hh"
 #include "G4DNADiracRMatrixExcitationModel.hh"
@@ -102,7 +103,7 @@
 #include "G4EmParameters.hh"
 #include "G4EmConfigurator.hh"
 
-G4_DECLARE_PHYSCONSTR_FACTORY(TsEmDNAPhysics);
+	G4_DECLARE_PHYSCONSTR_FACTORY(TsEmDNAPhysics);
 
 TsEmDNAPhysics::TsEmDNAPhysics(G4int ver, const G4String&)
 : G4VPhysicsConstructor("TsEmDNAPhysics"), verbose(ver)

@@ -32,6 +32,7 @@
 #include "G4DNAGenericIonsManager.hh"
 
 // Physics
+#include "G4DNABornIonisationModel.hh"
 #include "G4DNAElectronSolvation.hh"
 #include "G4DNAAttachment.hh"
 #include "G4DNAVibExcitation.hh"
