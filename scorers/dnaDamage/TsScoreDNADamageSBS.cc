@@ -23,6 +23,8 @@
 #include "G4Scheduler.hh"
 #include "G4ITTrackHolder.hh"
 
+#include <map>
+
 TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManager* mM, TsGeometryManager* gM, TsScoringManager* scM, TsExtensionManager* eM,
 										G4String scorerName, G4String quantity, G4String outFileName, G4bool isSubScorer)
 							: TsVNtupleScorer(pM, mM, gM, scM, eM, scorerName, quantity, outFileName, isSubScorer)
@@ -482,6 +484,37 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 
 TsScoreDNADamageSBS::~TsScoreDNADamageSBS() {}
 
+//--------------------------------------------------------------------------------------------
+// Geant4 11.3 renamed several radical species by prefixing a degree sign. The names reaching
+// this scorer through GetMolecule()->GetName() therefore changed under an otherwise identical
+// physics list, and because every test below is a raw string equality, the change was silent:
+// no warning, no exception, simply no hydroxyl damage. Measured on blade-server 2026-09-09,
+// identical decks and seeds, 5 MeV protons: strand breaks fell from 97 to 19 while base damage
+// fell only from 219 to 131, since bases can also be damaged by the solvated electron, whose
+// name did not change.
+//
+// The translation table mirrors TsIRTConfiguration::fGeant4NameOverrides, which already
+// carries this fix for the IRT path. Names are left untouched on Geant4 releases that do not
+// use the new spelling, so the scorer stays correct on both.
+//--------------------------------------------------------------------------------------------
+G4String TsScoreDNADamageSBS::NormalizeSpeciesName(const G4String& name)
+{
+	static const std::map<G4String, G4String> overrides = {
+		{"\u00b0OH^0",   "OH^0"},
+		{"\u00b0OH^-1",  "OH^-1"},
+		{"\u00b0O^0",    "O^0"},
+		{"O\u00b0^-1",   "O^-1"},
+		{"H_O2\u00b0^0", "HO2^0"},
+		{"O_2^0",         "O2^0"},
+		{"O_2^-1",        "O2^-1"},
+		{"O_3^0",         "O3^0"},
+		{"O_3^-1",        "O3^-1"}
+	};
+	auto it = overrides.find(name);
+	return (it != overrides.end()) ? it->second : name;
+}
+
+
 G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 {
 	if (!fIsActive)
@@ -607,7 +640,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		// Adds indirect damage
 		if (trackID < 0 && fScoreIndirectDamage)
 		{
-			G4String speciesName = GetMolecule(aStep->GetTrack())->GetName();
+			G4String speciesName = NormalizeSpeciesName(GetMolecule(aStep->GetTrack())->GetName());
 			G4bool isSpeciesToKill = (speciesName == "OH^0" || speciesName == "e_aq^-1" || speciesName == "H^0");
 			G4bool isHydroxil = (speciesName == "OH^0");
 			G4bool isHydElectron =  (speciesName == "e_aq^-1");

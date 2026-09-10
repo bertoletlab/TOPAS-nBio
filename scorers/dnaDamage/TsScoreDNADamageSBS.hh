@@ -36,6 +36,14 @@ public:
 	void CalculateYields();
 	G4double CalculateDoseInGray(G4double edep);
 
+	// Geant4 11.3 renamed several radical species, prefixing them with a degree sign
+	// (OH^0 became \u00b0OH^0, O^0 became \u00b0O^0, and so on). Every comparison in the
+	// indirect-damage branch of ProcessHits is a raw string equality, so on 11.3.x the
+	// hydroxyl tests silently stopped matching and all OH-mediated damage disappeared.
+	// TsIRTConfiguration already normalises these names through its fGeant4NameOverrides
+	// map; this applies the same translation on the step-by-step path.
+	static G4String NormalizeSpeciesName(const G4String& name);
+
 	void inline AddHierarchyLevel(G4String level)	{ fHierarchicalLevels.push_back(level); }
 	virtual std::pair<G4int, G4int> CalculateChromosomeAndBasePairID(std::vector<G4int> hids);
 	virtual std::pair<G4int, G4int> GetDNAComponentAndStrandID(G4TouchableHistory* touchable);
