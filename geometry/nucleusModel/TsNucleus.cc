@@ -587,19 +587,40 @@ void TsNucleus::SetDNAVolumes(G4bool BuildHalfCyl,
 			 lBack2 = CreateLogicalVolume("Backbone2", gDNA_backbone);
 		 }
 		 // ************************** build hydration shell layer **************************
+		 // The two wedges spanned 132 deg each, from 24 and 204 deg, together covering 73% of
+		 // the solid angle around the backbone. That span was a literal with no stated basis,
+		 // and it sets the size of an entire damage channel: quasi-direct damage takes ANY
+		 // ionisation in the shell with no energy threshold, so its yield is strictly
+		 // proportional to labelled shell volume (measured at 3504 +/- 280 strand breaks per
+		 // nm^3, chi2/dof 0.21). The span is a calibration parameter in all but name, and it
+		 // is one now, defaulting to the shipped 132 deg.
+		 //
+		 // The wedges stay centred on 90 and 270 deg whatever the span, so narrowing the shell
+		 // keeps it symmetric about the same axis rather than sliding it around the backbone.
 		 if (fAddHydrationShell){
+			G4double shellPhiSpan = 132*deg;
+			if (fPm->ParameterExists(GetFullParmName("HydrationShellPhiSpan")))
+				shellPhiSpan = fPm->GetDoubleParameter(GetFullParmName("HydrationShellPhiSpan"),"Angle");
+			if (shellPhiSpan <= 0. || shellPhiSpan > 180*deg) {
+				G4cerr << "TOPAS is exiting due to a serious error in Geometry setup." << G4endl;
+				G4cerr << GetFullParmName("HydrationShellPhiSpan")
+					   << " must lie in (0, 180] deg, or the two wedges overlap each other."
+					   << G4endl;
+				exit(1);
+			}
+
 			G4Sphere* gWater1 = new G4Sphere("DNA_WaterLayer1",
 														   backboneRadius,
 														   backboneRadius+fHydrationShellThickness,
-														   24*deg,
-														   132*deg,
+														   90*deg - shellPhiSpan/2.,
+														   shellPhiSpan,
 														   0*deg,
 														   180*deg);
 			G4Sphere* gWater2 = new G4Sphere("DNA_WaterLayer2",
 															backboneRadius,
 															backboneRadius+fHydrationShellThickness,
-															204*deg,
-															132*deg,
+															270*deg - shellPhiSpan/2.,
+															shellPhiSpan,
 															0*deg,
 															180*deg);
 			lHydrationShell1 = CreateLogicalVolume("HydrationShell1", gWater1);
