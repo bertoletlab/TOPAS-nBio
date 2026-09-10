@@ -36,6 +36,12 @@ always the honest statement of what we have altered.
 - LAB-PRIVATE campaign generators and decks never enter this repository. They live in
   `research/projects/topas-nbio-recalibration/`.
 
+## Attribution
+
+Commits here carry the PI as author and no other attribution. The repository is public and
+upstreamable, so its history reads as lab work. Anything written with assistance is still
+reviewed and owned by the named author before it lands.
+
 ## Provenance
 
 Forked at upstream `4c95802`, which is the commit the C0 verification campaign ran on, so
