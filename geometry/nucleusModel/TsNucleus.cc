@@ -552,28 +552,52 @@ void TsNucleus::SetDNAVolumes(G4bool BuildHalfCyl,
 	
 	//sphere DNA
 	if (BuildSphere){
+		// The sphere model's moiety sizes were literals, and the backbone radius appeared in
+		// three places: the orb itself and both hydration shells, which start at its surface.
+		// Changing the backbone therefore meant editing three numbers consistently or
+		// silently detaching the shell from the volume it wraps. They are parameters now,
+		// defaulting to the shipped values, and the shell derives its inner radius from the
+		// backbone so the two cannot drift apart.
+		//
+		// The motivating question is whether the shell stands in for missing DNA: the
+		// modelled backbone is 0.083 nm^3 while real sugar-phosphate is nearer 0.15 to
+		// 0.20 nm^3, so volume the model labels hydration water may be volume real DNA
+		// occupies. If so, the quasi-direct channel is inflated by construction, and its
+		// yield per unit shell volume should fall as the backbone grows toward physical size.
+		G4double backboneRadius = 0.271*nm;
+		if (fPm->ParameterExists(GetFullParmName("SphereBackboneRadius")))
+			backboneRadius = fPm->GetDoubleParameter(GetFullParmName("SphereBackboneRadius"),"Length");
+
+		G4double baseSemiX = 0.328*nm, baseSemiY = 0.328*nm, baseSemiZ = 0.185*nm;
+		if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")))
+			baseSemiX = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisX"),"Length");
+		if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisY")))
+			baseSemiY = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisY"),"Length");
+		if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisZ")))
+			baseSemiZ = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisZ"),"Length");
+
 		if (fAddBases){
-			G4Ellipsoid* gDNA_base = new G4Ellipsoid("DNA_base", 0.328*nm, 0.328*nm, 0.185*nm);
+			G4Ellipsoid* gDNA_base = new G4Ellipsoid("DNA_base", baseSemiX, baseSemiY, baseSemiZ);
 			lBase1 = CreateLogicalVolume("Base1", gDNA_base);
 			lBase2 = CreateLogicalVolume("Base2", gDNA_base);
 		 }
 		 if (fAddBackbones){
-			 G4Orb* gDNA_backbone = new G4Orb("DNA_backbone", 0.271*nm);
+			 G4Orb* gDNA_backbone = new G4Orb("DNA_backbone", backboneRadius);
 			 lBack1 = CreateLogicalVolume("Backbone1", gDNA_backbone);
 			 lBack2 = CreateLogicalVolume("Backbone2", gDNA_backbone);
 		 }
 		 // ************************** build hydration shell layer **************************
 		 if (fAddHydrationShell){
 			G4Sphere* gWater1 = new G4Sphere("DNA_WaterLayer1",
-														   0.271*nm,
-														   0.271*nm+fHydrationShellThickness,
+														   backboneRadius,
+														   backboneRadius+fHydrationShellThickness,
 														   24*deg,
 														   132*deg,
 														   0*deg,
 														   180*deg);
 			G4Sphere* gWater2 = new G4Sphere("DNA_WaterLayer2",
-															0.271*nm,
-															0.271*nm+fHydrationShellThickness,
+															backboneRadius,
+															backboneRadius+fHydrationShellThickness,
 															204*deg,
 															132*deg,
 															0*deg,
