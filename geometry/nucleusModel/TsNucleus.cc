@@ -88,8 +88,13 @@ G4VPhysicalVolume* TsNucleus::Construct()
 	// Specify the file needed to build the hilbert filling curve
 	G4String HilbertCurveFileName = fPm->GetStringParameter(GetFullParmName("HilbertCurveFileName"));
 
+	// The member-variable prefix had leaked into the user-facing name, so the parameter a deck
+	// had to write was Ge/Nucleus/fCheckOverlap. CheckOverlap is the spelling that matches every
+	// other parameter in this class; the prefixed form stays accepted for existing decks.
 	fCheckOverlap = false;
-	if (fPm->ParameterExists(GetFullParmName("fCheckOverlap")))
+	if (fPm->ParameterExists(GetFullParmName("CheckOverlap")))
+	  fCheckOverlap = fPm->GetBooleanParameter(GetFullParmName("CheckOverlap"));
+	else if (fPm->ParameterExists(GetFullParmName("fCheckOverlap")))
 	  fCheckOverlap = fPm->GetBooleanParameter(GetFullParmName("fCheckOverlap"));
 
 	fFillCylindersWithDNA = true;
@@ -129,8 +134,15 @@ G4VPhysicalVolume* TsNucleus::Construct()
 	if (fPm->ParameterExists(GetFullParmName("AddBases")))
 	  fAddBases = fPm->GetBooleanParameter(GetFullParmName("AddBases"));
 	
+	// AddBackbones, plural, is what every shipped example sets and what AddBases alongside it
+	// implies. The code asked for the singular, so the parameter was silently ignored: setting
+	// AddBackbones to "false" still built backbones, and nothing said so because the default is
+	// true and the examples all set it to true. The singular spelling is still accepted so that
+	// any deck written against the old behaviour keeps working.
 	fAddBackbones = true;
-	if (fPm->ParameterExists(GetFullParmName("AddBackbone")))
+	if (fPm->ParameterExists(GetFullParmName("AddBackbones")))
+		fAddBackbones = fPm->GetBooleanParameter(GetFullParmName("AddBackbones"));
+	else if (fPm->ParameterExists(GetFullParmName("AddBackbone")))
 		fAddBackbones = fPm->GetBooleanParameter(GetFullParmName("AddBackbone"));
 	
 	fAddHydrationShell = true;
@@ -138,8 +150,13 @@ G4VPhysicalVolume* TsNucleus::Construct()
 	  fAddHydrationShell = fPm->GetBooleanParameter(GetFullParmName("AddHydrationShell"));
 
 	fHydrationShellThickness = 0.16*nm;
+	// The existence check and the value read must name the SAME parameter. They did not: the
+	// read carried the member-variable prefix, so a deck setting the documented name
+	// HydrationShellThickness passed the check and then failed the lookup, taking the run down
+	// rather than changing the shell. The thickness was not merely stuck at its default, it
+	// could not be set at all.
 	if (fPm->ParameterExists(GetFullParmName("HydrationShellThickness")))
-	  fHydrationShellThickness = fPm->GetDoubleParameter(GetFullParmName("fHydrationShellThickness"),"Length");
+	  fHydrationShellThickness = fPm->GetDoubleParameter(GetFullParmName("HydrationShellThickness"),"Length");
 	
 	fDNAModel = "Sphere";
 	if (fPm->ParameterExists(GetFullParmName("DNAModel")))
