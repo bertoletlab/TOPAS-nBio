@@ -219,12 +219,25 @@ void TsPlasmidSupercoiled::PlaceDNA(vector<DNA *> &DNApt,
 	
 	//Spherical DNA
     if (BuildSphere){
-		G4Orb* gDNA_base = new G4Orb("DNA_base",  0.208*nm);
+		// NOTE that "Sphere" does not name one model across the codebase. These defaults give
+		// a base of 0.0377 nm3 and a backbone of 0.1022 nm3, a base-to-backbone volume ratio
+		// of 0.37, while TsNucleus's "Sphere" gives 0.0834 nm3 for both, a ratio of 1.00.
+		// Anything calibrated against the accessibility partition in one geometry therefore
+		// does not carry to the other unless these are set to match. They are parameters here
+		// for exactly that reason.
+		G4double baseRadius = 0.208*nm;
+		if (fPm->ParameterExists(GetFullParmName("SphereBaseRadius")))
+			baseRadius = fPm->GetDoubleParameter(GetFullParmName("SphereBaseRadius"),"Length");
+		G4double backboneRadius = 0.29*nm;
+		if (fPm->ParameterExists(GetFullParmName("SphereBackboneRadius")))
+			backboneRadius = fPm->GetDoubleParameter(GetFullParmName("SphereBackboneRadius"),"Length");
+
+		G4Orb* gDNA_base = new G4Orb("DNA_base", baseRadius);
         
         lBase1 = CreateLogicalVolume("Base1", gDNA_base);
         lBase2 = CreateLogicalVolume("Base2", gDNA_base);
         
-		G4Orb* gDNA_backbone = new G4Orb("DNA_deoxyribose", 0.29*nm); 
+		G4Orb* gDNA_backbone = new G4Orb("DNA_deoxyribose", backboneRadius); 
         
         lBack1 = CreateLogicalVolume("Backbone1", gDNA_backbone);
         lBack2 = CreateLogicalVolume("Backbone2", gDNA_backbone);
