@@ -12,6 +12,8 @@
 
 #include "TsScoreDNADamageSBS.hh"
 
+#include <fstream>
+
 #include "TsVGeometryComponent.hh"
 
 #include "G4SystemOfUnits.hh"
@@ -771,6 +773,21 @@ void TsScoreDNADamageSBS::UserHookForEndOfRun()
 		numberOfLesions += lesionsThisEvent;
         // Only fill if there is any damage
 		if (lesionsThisEvent > 0) fNtuple->Fill();
+	}
+
+	// The attack counters go to their own file, not only to the ntuple. The ntuple fills
+	// only for events that produced damage, so reading attacks from it would condition the
+	// sample on damage having occurred, and drop every attack made on a track that happened
+	// to cause none. That selection acts on exactly the quantity these counters exist to
+	// measure, and it acts hardest at low scavenging probability, where the partition is
+	// most interesting. This file is written once per run, unconditionally.
+	if (fScoreIndirectDamage)
+	{
+		std::ofstream fScav(fOutFileName + "_scavenged.csv");
+		fScav << "Events,Scavenged_Backbone,Scavenged_Base,Scavenged_Histone" << G4endl;
+		fScav << fCollectionsOfHits.size() << "," << fNumScavengedInBackbone << ","
+		      << fNumScavengedInBase << "," << fNumScavengedInHistone << G4endl;
+		fScav.close();
 	}
     // Adding damage and primary count at the end
     fDamageCalculator->AddDamageAndPrimaryCount(numberOfLesions, fCollectionsOfHits.size());
