@@ -37,6 +37,7 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 
 	// Initialize quantification of damage
 	fNumSB = 0; fNumSBDirect = 0; fNumSBQuasiDirect = 0; fNumSBIndirect = 0;
+	fNumScavengedInBackbone = 0; fNumScavengedInBase = 0; fNumScavengedInHistone = 0;
 	fNumSSB = 0; fNumSSBDirect = 0; fNumSSBQuasiDirect = 0; fNumSSBIndirect = 0;
 	fNumDSB = 0; fNumDSBDirect = 0; fNumDSBIndirect = 0; fNumDSBDirectIndirect = 0; fNumDSBDirectQuasiDirect = 0; fNumDSBQuasiDirectQuasiDirect = 0; fNumDSBIndirectQuasiDirect = 0;
 	fNumBaseDamage = 0; fNumBaseDamageDirect = 0; fNumBaseDamageQuasiDirect = 0; fNumBaseDamageIndirect = 0;
@@ -423,6 +424,12 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 			if (fScoreDirectDamage) fNtuple->RegisterColumnI(&fNumBaseDamageDirect, "BDs_Direct");
 			if (fScoreQuasiDirectDamage) fNtuple->RegisterColumnI(&fNumBaseDamageQuasiDirect, "BDs_QuasiDirect");
 			if (fScoreIndirectDamage) fNtuple->RegisterColumnI(&fNumBaseDamageIndirect, "BDs_Indirect");
+			if (fScoreIndirectDamage)
+			{
+				fNtuple->RegisterColumnI(&fNumScavengedInBackbone, "Scavenged_Backbone");
+				fNtuple->RegisterColumnI(&fNumScavengedInBase, "Scavenged_Base");
+				fNtuple->RegisterColumnI(&fNumScavengedInHistone, "Scavenged_Histone");
+			}
 		}
 	}
 
@@ -664,6 +671,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 				if (scavenged)
 				{
                     fTracksScavenged.push_back(aStep->GetTrack());
+					fNumScavengedInBase++;
 					if (G4UniformRand() < fProbabilityOfDamageInBase)
 					{
 						hit->SetDamageType(indirect);
@@ -686,6 +694,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 				if (scavenged)
 				{
                     fTracksScavenged.push_back(aStep->GetTrack());
+					fNumScavengedInBackbone++;
 					if (G4UniformRand() < fProbabilityOfDamageInBackbone)
 					{
 						hit->SetDamageType(indirect);
@@ -700,6 +709,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 			else if (isSpeciesToKill && fScavengeInHistones && componentID == histone)
 			{
                 fTracksScavenged.push_back(aStep->GetTrack());
+				fNumScavengedInHistone++;
                 delete hit;
                 return false;
 			}
