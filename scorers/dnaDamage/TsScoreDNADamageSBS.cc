@@ -395,6 +395,15 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 	}
 	if (fScoreOnBases)
 		fNtuple->RegisterColumnD(&fYBaseDam, "BD/Gy/Gbp", "");
+	// Radicals DNA removed from the pool, counted where the scavenging decision is taken and
+	// so independent of the conversion draw that follows it. Not gated on which moieties are
+	// scored for damage: an attack on the backbone is counted whether or not bases are scored.
+	if (fScoreIndirectDamage)
+	{
+		fNtuple->RegisterColumnI(&fNumScavengedInBackbone, "Scavenged_Backbone");
+		fNtuple->RegisterColumnI(&fNumScavengedInBase, "Scavenged_Base");
+		fNtuple->RegisterColumnI(&fNumScavengedInHistone, "Scavenged_Histone");
+	}
 	if (fBreakDownPerDamageOrigin)
 	{
 		if (fScoreOnBackbones)
@@ -424,12 +433,6 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 			if (fScoreDirectDamage) fNtuple->RegisterColumnI(&fNumBaseDamageDirect, "BDs_Direct");
 			if (fScoreQuasiDirectDamage) fNtuple->RegisterColumnI(&fNumBaseDamageQuasiDirect, "BDs_QuasiDirect");
 			if (fScoreIndirectDamage) fNtuple->RegisterColumnI(&fNumBaseDamageIndirect, "BDs_Indirect");
-			if (fScoreIndirectDamage)
-			{
-				fNtuple->RegisterColumnI(&fNumScavengedInBackbone, "Scavenged_Backbone");
-				fNtuple->RegisterColumnI(&fNumScavengedInBase, "Scavenged_Base");
-				fNtuple->RegisterColumnI(&fNumScavengedInHistone, "Scavenged_Histone");
-			}
 		}
 	}
 
@@ -878,6 +881,15 @@ void TsScoreDNADamageSBS::AbsorbResultsFromWorkerScorer(TsVScorer* workerScorer)
 	for(unsigned int i=0; i < workerMTScorer->fEventsEdep.size(); i++)
 		fEventsEdep.push_back(workerMTScorer->fEventsEdep[i]);
 	workerMTScorer->fEventsEdep.clear();
+
+	// The attack counters increment in ProcessHits, which runs on the worker, while the
+	// ntuple is filled from the master. Without this they are registered and always zero.
+	fNumScavengedInBackbone += workerMTScorer->fNumScavengedInBackbone;
+	fNumScavengedInBase     += workerMTScorer->fNumScavengedInBase;
+	fNumScavengedInHistone  += workerMTScorer->fNumScavengedInHistone;
+	workerMTScorer->fNumScavengedInBackbone = 0;
+	workerMTScorer->fNumScavengedInBase     = 0;
+	workerMTScorer->fNumScavengedInHistone  = 0;
 }
 
 // Default implementation (no more hierarchy levels, everything is chromosome 1)
