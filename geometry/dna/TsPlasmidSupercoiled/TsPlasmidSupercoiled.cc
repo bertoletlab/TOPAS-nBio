@@ -27,6 +27,7 @@
 #include "G4Tubs.hh"
 #include "G4Box.hh"
 #include "G4Orb.hh"
+#include "G4Ellipsoid.hh"
 
 #include "G4SystemOfUnits.hh"
 #include "G4PhysicalConstants.hh"
@@ -232,7 +233,33 @@ void TsPlasmidSupercoiled::PlaceDNA(vector<DNA *> &DNApt,
 		if (fPm->ParameterExists(GetFullParmName("SphereBackboneRadius")))
 			backboneRadius = fPm->GetDoubleParameter(GetFullParmName("SphereBackboneRadius"),"Length");
 
-		G4Orb* gDNA_base = new G4Orb("DNA_base", baseRadius);
+		// The base is an ELLIPSOID when the semi-axes are given, which is what TsNucleus
+		// actually builds. Substituting an equal-VOLUME orb is not equivalent, because base
+		// pairs sit 0.34 nm apart along the helix: the nucleus ellipsoid is 0.370 nm tall and
+		// barely touches its neighbours, while an orb of the same 0.0834 nm3 is 0.542 nm
+		// across and buries much of itself in them. Measured at Pbb 0.25 and Pbase 1.0, going
+		// from the orb of 0.208 nm to one of 0.271 nm raised the nominal base volume by 2.21x
+		// and the base attack count by only 1.156 +/- 0.031, so 48% of the added volume was
+		// not accessible. Matching volume without matching shape does not transfer a
+		// calibration between the two geometries; matching the solid does.
+		G4VSolid* gDNA_base = 0;
+		if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")) ||
+			fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisY")) ||
+			fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisZ")))
+		{
+			G4double sx = 0.328*nm, sy = 0.328*nm, sz = 0.185*nm;   // TsNucleus defaults
+			if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")))
+				sx = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisX"),"Length");
+			if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisY")))
+				sy = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisY"),"Length");
+			if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisZ")))
+				sz = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisZ"),"Length");
+			gDNA_base = new G4Ellipsoid("DNA_base", sx, sy, sz);
+		}
+		else
+		{
+			gDNA_base = new G4Orb("DNA_base", baseRadius);
+		}
         
         lBase1 = CreateLogicalVolume("Base1", gDNA_base);
         lBase2 = CreateLogicalVolume("Base2", gDNA_base);
