@@ -131,6 +131,21 @@ protected:
 	G4int fNumBaseDamageDirect;
 	G4int fNumBaseDamageQuasiDirect;
 	G4int fNumBaseDamageIndirect;
+
+	// Radical ATTACKS on DNA, counted where the scavenging decision is taken and therefore
+	// independent of whatever the conversion draw does afterwards. Damage counts cannot
+	// stand in for these: a scavenged radical is queued in fTracksScavenged and only killed
+	// later, in UserHookForPostTimeStepAction, so one that fails its conversion draw can
+	// reach another DNA volume and be scavenged again. Inferring attacks as
+	// strand breaks / conversion therefore overcounts at low conversion. Measured at fixed
+	// scavenging probability with conversion 0.25, 0.55 and 1.00, that inference gave 468,
+	// 386 and 324 attacks where one number was expected.
+	// These are RUN-CUMULATIVE: they are incremented during tracking, while the ntuple is
+	// filled after tracking ends, so every row of a run carries the same total. With one
+	// history per run, the campaign's standing unit, that total is the per-track count.
+	G4int fNumScavengedInBackbone;
+	G4int fNumScavengedInBase;
+	G4int fNumScavengedInHistone;
 	G4int fNumSSBPlus;
 	G4int fNumDSBPlus;
 	G4int fNumDSBComplex;
