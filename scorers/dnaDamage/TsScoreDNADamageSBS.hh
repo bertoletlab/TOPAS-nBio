@@ -210,7 +210,10 @@ protected:
     // Tracks to be scavenged at the end of each time step
     std::vector<G4Track*> fTracksScavenged;
 
-	// Codes for components ID
+	// Codes for components ID. notadnacomponent must stay distinct from every real code,
+	// and in particular from base: an unrecognised volume name used to fall through to a
+	// default-constructed pair, which is {0, 0}, i.e. base on strand 0.
+	G4int notadnacomponent = -2;
 	G4int histone = -1;
 	G4int base = 0;
 	G4int backbone = 1;

@@ -71,24 +71,36 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 	fBasePairDepth = 0;
 	if (fPm->ParameterExists(GetFullParmName("BasePairPositionAtGeometricHierarchy")))
 		fBasePairDepth = fPm->GetIntegerParameter(GetFullParmName("BasePairPositionAtGeometricHierarchy"));
+	// These lists decide which steps the scorer looks at AT ALL: a step whose material is in
+	// neither list is discarded before any component logic runs. Omitting a DNA material here
+	// does not raise an error, it makes damage to that moiety silently impossible.
 	G4String* strand1Materials = NULL;
 	G4String* strand2Materials = NULL;
 	G4int strand1Length = 0;
 	G4int strand2Length = 0;
+	G4String defaultStrandMaterial = "G4_WATER";
 	if (fPm->ParameterExists(GetFullParmName("Strand1MaterialNames")))
 	{
 		strand1Materials = fPm->GetStringVector(GetFullParmName("Strand1MaterialNames"));
 		strand1Length = fPm->GetVectorLength(GetFullParmName("Strand1MaterialNames"));
 	}
 	else
-		strand1Materials[0] = "G4_WATER";
+	{
+		// The fallback used to write through a null pointer, and left the length at zero as
+		// well, so the case it exists to handle was a crash rather than a default.
+		strand1Materials = &defaultStrandMaterial;
+		strand1Length = 1;
+	}
 	if (fPm->ParameterExists(GetFullParmName("Strand2MaterialNames")))
 	{
 		strand2Materials = fPm->GetStringVector(GetFullParmName("Strand2MaterialNames"));
 		strand2Length = fPm->GetVectorLength(GetFullParmName("Strand2MaterialNames"));
 	}
 	else
-		strand2Materials[0] = "G4_WATER";
+	{
+		strand2Materials = &defaultStrandMaterial;
+		strand2Length = 1;
+	}
 	for (G4int i = 0; i < strand1Length; i++)
 		fStrand1Materials.push_back(GetMaterial(strand1Materials[i]));
 	for (G4int i = 0; i < strand2Length; i++)
@@ -603,6 +615,14 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 			hierarchicalIDs.push_back(touchable->GetCopyNumber(fBasePairDepth + i));
 
 		std::pair<G4int, G4int> compAndStrandID = GetDNAComponentAndStrandID(touchable);
+		// Container volumes that merely enclose the DNA are not DNA. TsCircularPlasmid wraps
+		// each base pair in a box physical volume named "Base", which matches none of the
+		// component names; treating it as a base made every radical entering a base pair be
+		// scavenged at the box boundary, on strand 0, which is neither strand. Base damage on
+		// that geometry was therefore identically zero while the backbones were starved of
+		// the radicals consumed at the boundary.
+		if (compAndStrandID.first == notadnacomponent)
+			return false;
 		G4int componentID = compAndStrandID.first;
 		G4int strandID = compAndStrandID.second;
 		// Sets base pair ID to -1 if histone is touched
@@ -740,6 +760,11 @@ std::pair<G4int,G4int> TsScoreDNADamageSBS::GetDNAComponentAndStrandID(G4Touchab
 	G4String volumeName = touchable->GetVolume(fBasePairDepth)->GetName();
 	// Gets strand number and DNA component ID (see header file for component IDs)
 	std::pair<G4int, G4int> compAndStandId;
+	// Not a DNA component until a name says otherwise. A default-constructed pair is {0, 0},
+	// and base is 0, so leaving it that way makes every unrecognised volume a base hit on a
+	// strand that does not exist.
+	compAndStandId.first = notadnacomponent;
+	compAndStandId.second = 0;
 	if (strstr(volumeName, "Base1") != NULL || strstr(volumeName, "BasePair") != NULL) { compAndStandId.first = base; compAndStandId.second = 1; }
 	else if (strstr(volumeName, "Base2") != NULL) { compAndStandId.first = base; compAndStandId.second = 2; }
 	else if (strstr(volumeName, "Backbone1") != NULL) { compAndStandId.first = backbone; compAndStandId.second = 1; }
