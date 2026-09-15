@@ -182,13 +182,46 @@ G4VPhysicalVolume* TsPlasmidSupercoiled::Construct()
 		G4cerr << "Use: HalfCyl, QuartCyl or Sphere" << G4endl;
 	}
 	
+    // ---- sphere-model placement -------------------------------------------------------
+    // MatchNucleusSphereModel makes this component build the SAME geometry as TsNucleus,
+    // rather than merely the same-named one. The two differed in every placement constant:
+    // helix radius 1.15 against 1.2 nm, backbone radial position 0.860 against 0.9285 nm,
+    // base radial position 0.270 against 0.3290 nm, and opposite conventions for both the
+    // helix handedness and the plane normal. Measured at a backbone scavenging probability
+    // of 0.25 and a base probability of 1.0, that left the backbone share of radical attacks
+    // at 0.1328 +/- 0.0058 here against 0.2950 +/- 0.0096 in the nucleus, so a probability
+    // calibrated in one geometry was not valid in the other. Switching histones and the
+    // hydration shell off in the nucleus changed nothing, which is how the placement was
+    // identified as the cause.
+    G4bool matchNucleus = false;
+    if (fPm->ParameterExists(GetFullParmName("MatchNucleusSphereModel")))
+        matchNucleus = fPm->GetBooleanParameter(GetFullParmName("MatchNucleusSphereModel"));
+
+    G4double helixRadius   = matchNucleus ? 1.2*nm  : 1.15*nm;
+    G4double backboneR     = matchNucleus ? 0.271*nm : 0.29*nm;
+    G4double baseRadialSz  = matchNucleus ? 0.328*nm : 0.3*nm;
+    if (fPm->ParameterExists(GetFullParmName("HelixRadius")))
+        helixRadius = fPm->GetDoubleParameter(GetFullParmName("HelixRadius"),"Length");
+    if (fPm->ParameterExists(GetFullParmName("SphereBackboneRadius")))
+        backboneR = fPm->GetDoubleParameter(GetFullParmName("SphereBackboneRadius"),"Length");
+    // the base's RADIAL extent sets where it sits: the semi-axis along the helix radius for
+    // an ellipsoid, the radius for an orb
+    if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")))
+        baseRadialSz = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisX"),"Length");
+    else if (fPm->ParameterExists(GetFullParmName("SphereBaseRadius")))
+        baseRadialSz = fPm->GetDoubleParameter(GetFullParmName("SphereBaseRadius"),"Length");
+
     DNACoordinates * co = new DNACoordinates;
     co->Generate(SmoothedPath,
                  DNAPts,
                  BuildHalfCyl,
                  BuildQuartCyl,
                  BuildSphere,
-				 segment);
+				 segment,
+                 helixRadius,
+                 backboneR,
+                 baseRadialSz,
+                 matchNucleus);
     delete co;
     
     
@@ -242,8 +275,17 @@ void TsPlasmidSupercoiled::PlaceDNA(vector<DNA *> &DNApt,
 		// and the base attack count by only 1.156 +/- 0.031, so 48% of the added volume was
 		// not accessible. Matching volume without matching shape does not transfer a
 		// calibration between the two geometries; matching the solid does.
+		G4bool matchNucleusSolids = false;
+		if (fPm->ParameterExists(GetFullParmName("MatchNucleusSphereModel")))
+			matchNucleusSolids = fPm->GetBooleanParameter(GetFullParmName("MatchNucleusSphereModel"));
+		if (matchNucleusSolids)
+		{
+			baseRadius = 0.0;          // unused; the ellipsoid branch below takes over
+			backboneRadius = 0.271*nm; // TsNucleus's backbone orb
+		}
 		G4VSolid* gDNA_base = 0;
-		if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")) ||
+		if (matchNucleusSolids ||
+			fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")) ||
 			fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisY")) ||
 			fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisZ")))
 		{

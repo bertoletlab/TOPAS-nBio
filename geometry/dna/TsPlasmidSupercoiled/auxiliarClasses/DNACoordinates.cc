@@ -28,7 +28,11 @@ void DNACoordinates::Generate(vector<G4ThreeVector> &path,
                               G4bool BuildHalfCyl,
                               G4bool BuildQuartCyl,
                               G4bool BuildSphere,
-							  G4bool segment)
+							  G4bool segment,
+                              G4double helixRadius,
+                              G4double backboneRadius,
+                              G4double baseRadialSize,
+                              G4bool nucleusConvention)
 {
     //split the path into 0.34nm steps
 	vector<G4ThreeVector> newPath; // = path;
@@ -38,7 +42,7 @@ void DNACoordinates::Generate(vector<G4ThreeVector> &path,
 		newPath = path;
     
     if (BuildSphere){
-        BuildSphereDNA(newPath, DNAPts);
+        BuildSphereDNA(newPath, DNAPts, helixRadius, backboneRadius, baseRadialSize, nucleusConvention);
     } else if (BuildHalfCyl || BuildQuartCyl){
         BuildDNA(newPath, DNAPts);
     } else {
@@ -185,11 +189,16 @@ void DNACoordinates::BuildDNA(vector<G4ThreeVector> &newPath, vector<DNA*> &DNAP
     
 }
 
-void DNACoordinates::BuildSphereDNA(vector<G4ThreeVector> &newPath, vector<DNA*> &DNAPts)
+void DNACoordinates::BuildSphereDNA(vector<G4ThreeVector> &newPath, vector<DNA*> &DNAPts,
+                                    G4double helixRadius, G4double backboneRadius,
+                                    G4double baseRadialSize, G4bool nucleusConvention)
 {
-    double helixRadius = 1.15 * nm;
-	double rBack = helixRadius - 0.29*nm;// helixRadius - 0.24*nm;
-	double rBase = helixRadius - 2.0*0.29*nm - 0.3*nm;// helixRadius - 2.0 * 0.24*nm - 0.208*nm;  //rBack - 0.24*nm - 0.208*nm;
+	// Radial positions are DERIVED from the solid sizes rather than written as literals, which
+	// is what TsNucleus does and what keeps a resized sphere in the place its size implies.
+	// Passing the shipped 1.15 / 0.29 / 0.3 nm reproduces the previous geometry exactly;
+	// passing TsNucleus's 1.2 / 0.271 / 0.328 nm reproduces the nucleus.
+	double rBack = helixRadius - backboneRadius;
+	double rBase = rBack - backboneRadius - baseRadialSize;
     double rotPair = ((2.0*pi)/10.0);   //10bp per turn
     //double majorGroove = 2.2*nm;
     //double minorGroove = 1.2*nm;
@@ -212,7 +221,10 @@ void DNACoordinates::BuildSphereDNA(vector<G4ThreeVector> &newPath, vector<DNA*>
     for (int bp=0; bp<nBP-1; bp++){
         //Position of base + back in xy
         //Definitely gives right handed coil (checked) -- left handed in -ve z?
-        double angle1 = -(double)bp * rotPair;
+        // TsNucleus winds the helix the other way and takes the plane normal as -z. Both
+        // conventions are self-consistent, but they are not the same placement, so matching
+        // the nucleus means matching both of them, not only the radii.
+        double angle1 = (nucleusConvention ? 1.0 : -1.0) * (double)bp * rotPair;
         double angle2 = angle1+pi;// + (120.0*pi/180.0); //offset for strand2 (major and minor groove)
         
         G4ThreeVector back1temp = G4ThreeVector((rBack*cos(angle1)), (rBack*sin(angle1)), 0.0);
@@ -222,7 +234,7 @@ void DNACoordinates::BuildSphereDNA(vector<G4ThreeVector> &newPath, vector<DNA*>
         
         //Rotation to point to next plane
         G4ThreeVector vecNext = (newPath[bp]-newPath[bp+1]).unit(); //unit vec pointing to next
-        G4ThreeVector norm (0.,0.,1.); //the normal to the plane (G4 build planes facing -z)
+        G4ThreeVector norm (0.,0., nucleusConvention ? -1. : 1.); //plane normal
         G4double DotProd = norm.dot(vecNext);
         G4double AngBetween = acos(DotProd); //angle between this plane and next (rad)
         G4ThreeVector cross = (vecNext.cross(norm)).unit(); //vector perp to vecnext and norm

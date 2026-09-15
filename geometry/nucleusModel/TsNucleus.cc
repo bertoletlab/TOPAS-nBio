@@ -37,6 +37,7 @@
 // Addition by Alejandro Bertolet
 
 #include "TsNucleus.hh"
+#include "TsSphereDNAPlacement.hh"
 #include "TsParameterManager.hh"
 
 #include "G4SystemOfUnits.hh"
@@ -921,66 +922,36 @@ void TsNucleus::SegmentDNAPath(std::vector<G4ThreeVector> &path)
 // Use DNA path to place sphere DNA volumes
 void TsNucleus::PlaceDNASphere(vector<G4ThreeVector> &newPath, G4VPhysicalVolume* physVol)
 {
-	G4double helixRadius = 1.2*nm;
-	G4double rotPair = ((2.0*pi)/10.0);   //10bp per turn
-	G4int nBP=newPath.size();
-	G4double rBack=helixRadius - 0.2715*nm;
-	G4double rBase=rBack - 0.271*nm - 0.3285*nm;
+	// Placement lives in TsBuildSphereDNAPlacement so that this component and
+	// TsPlasmidSphereDNA build the same geometry rather than two that merely share a name.
+	// The radial positions are derived there from the solid sizes, which also repairs a
+	// coupling that used to be silent: rBack and rBase were written as 0.2715 and 0.3285 nm
+	// beside a backbone radius of 0.271 and a base semi-axis of 0.328, so resizing either
+	// solid through its parameter left the placement behind.
+	G4double backboneRadius = 0.271*nm;
+	if (fPm->ParameterExists(GetFullParmName("SphereBackboneRadius")))
+		backboneRadius = fPm->GetDoubleParameter(GetFullParmName("SphereBackboneRadius"),"Length");
+	G4double baseSemiX = 0.328*nm;
+	if (fPm->ParameterExists(GetFullParmName("SphereBaseSemiAxisX")))
+		baseSemiX = fPm->GetDoubleParameter(GetFullParmName("SphereBaseSemiAxisX"),"Length");
+	G4double helixRadius = TsSphereDNADefaults::kHelixRadius;
+	if (fPm->ParameterExists(GetFullParmName("HelixRadius")))
+		helixRadius = fPm->GetDoubleParameter(GetFullParmName("HelixRadius"),"Length");
 
-	for (int bp=0; bp<nBP-1; bp++){
+	G4int nBP = newPath.size();
+	std::vector<TsSphereDNABasePair> bps =
+		TsBuildSphereDNAPlacement(newPath, helixRadius, backboneRadius, baseSemiX);
+
+	for (size_t i = 0; i < bps.size(); i++)
+	{
+		TsSphereDNABasePair& e = bps[i];
 		fNumberOfBasePairs++;
-		G4double angle1 = (G4double)bp * rotPair;
-		G4double angle2 = angle1+pi;// + (120.0*pi/180.0); //offset for strand2 (major and minor groove)
+		G4int bpID = e.bpID;
 
-		//temporary positions
-		G4ThreeVector back1temp = G4ThreeVector((rBack*cos(angle1)), (rBack*sin(angle1)), 0.0);
-		G4ThreeVector back2temp = G4ThreeVector((rBack*cos(angle2)), (rBack*sin(angle2)), 0.0);
-		G4ThreeVector base1temp = G4ThreeVector((rBase*cos(angle1)), (rBase*sin(angle1)), 0.0);
-		G4ThreeVector base2temp = G4ThreeVector((rBase*cos(angle2)), (rBase*sin(angle2)), 0.0);
-
-		//Rotation to point to next plane
-		G4ThreeVector vecNext = (newPath[bp]-newPath[bp+1]).unit(); //unit vec pointing to next
-		G4ThreeVector norm (0.,0.,-1.); //the normal to the plane (G4 build planes facing -z)
-		G4double DotProd = norm.dot(vecNext);
-		G4double AngBetween = acos(DotProd); //angle between this plane and next (rad)
-		G4ThreeVector cross = (vecNext.cross(norm)).unit(); //vector perp to vecnext and norm
-
-		//set up new 3Vectors for rotated pos
-		G4ThreeVector back1(0.,0.,0.), back2(0.,0.,0.), base1(0.,0.,0.), base2(0.,0.,0.);
-
-		G4RotationMatrix *rot = new G4RotationMatrix;
-		if (cross.x() != 0 || cross.y() != 0 || cross.z() != 0)
-		{
-			//Apply rotation
-			rot->rotate(AngBetween, cross);
-			ApplyRotation(back1, back1temp, rot);
-			ApplyRotation(back2, back2temp, rot);
-			ApplyRotation(base1, base1temp, rot);
-			ApplyRotation(base2, base2temp, rot);
-		}
-		else
-		{
-			base1 = base1temp;
-			base2 = base2temp;
-			back1 = back1temp;
-			back2 = back2temp;
-		}
-		//Translate
-		base1+=newPath[bp];
-		base2+=newPath[bp];
-		back1+=newPath[bp];
-		back2+=newPath[bp];
-
-		G4int bpID=bp+1;
-
-		if(fAddBases) {
-			G4ThreeVector *posBase1 = &base1;
-			G4ThreeVector *posBase2 = &base2;
-			//Apply rotation
-			G4RotationMatrix *rot1 = new G4RotationMatrix();
-			if (cross.x() != 0 || cross.y() != 0 || cross.z() != 0)
-				rot1->rotate(AngBetween, cross);  // this causes a strange behavior when AngBetween close to pi, to be resolved ... easiest to see by setting angle1 = 0.
-			rot1->rotateZ(-angle1+pi/2);
+		if (fAddBases) {
+			G4ThreeVector *posBase1 = new G4ThreeVector(e.base1);
+			G4ThreeVector *posBase2 = new G4ThreeVector(e.base2);
+			G4RotationMatrix *rot1 = new G4RotationMatrix(e.rotBase);
 			if (physVol == NULL)
 			{
 				CreatePhysicalVolume("Base1_", bpID, true, lBase1, rot1, posBase1, fFiberLogic);
@@ -993,13 +964,10 @@ void TsNucleus::PlaceDNASphere(vector<G4ThreeVector> &newPath, G4VPhysicalVolume
 			}
 		}
 
-		if(fAddBackbones) {
-			G4ThreeVector *posBack1 = &back1;
-			G4ThreeVector *posBack2 = &back2;
-			//Apply rotation
-			G4RotationMatrix *rot1 = new G4RotationMatrix();
-			if (cross.x() != 0 || cross.y() != 0 || cross.z() != 0)
-				rot1->rotate(AngBetween, cross);  // this causes a strange behavior when AngBetween close to pi, to be resolved ... easiest to see by setting angle1 = 0.
+		if (fAddBackbones) {
+			G4ThreeVector *posBack1 = new G4ThreeVector(e.back1);
+			G4ThreeVector *posBack2 = new G4ThreeVector(e.back2);
+			G4RotationMatrix *rot1 = new G4RotationMatrix(e.rotBackbone);
 			if (physVol == NULL)
 			{
 				CreatePhysicalVolume("Backbone1_", bpID, true, lBack1, rot1, posBack1, fFiberLogic);
@@ -1012,18 +980,12 @@ void TsNucleus::PlaceDNASphere(vector<G4ThreeVector> &newPath, G4VPhysicalVolume
 			}
 		}
 
-		if(fAddHydrationShell) {
-			G4ThreeVector *posHyd1 = &back1;
-			G4ThreeVector *posHyd2 = &back2;
-			//Apply rotation
-			G4RotationMatrix *rot1 = new G4RotationMatrix();
-			G4RotationMatrix *rot2 = new G4RotationMatrix();
-			if (cross.x() != 0 || cross.y() != 0 || cross.z() != 0)
-			{
-				rot1->rotate(AngBetween, cross);  // this causes a strange behavior when AngBetween close to pi, to be resolved ... easiest to see by setting angle1 = 0.
-				rot2->rotate(AngBetween, cross);
-			}
-			rot1->rotateZ(-angle1+pi/2);
+		if (fAddHydrationShell) {
+			// the shell sits on the backbone positions but takes the base's orientation,
+			// which is what the original loop did
+			G4ThreeVector *posHyd1 = new G4ThreeVector(e.back1);
+			G4ThreeVector *posHyd2 = new G4ThreeVector(e.back2);
+			G4RotationMatrix *rot1 = new G4RotationMatrix(e.rotBase);
 			if (physVol == NULL)
 			{
 				CreatePhysicalVolume("HydrationShell1_", bpID, true, lHydrationShell1, rot1, posHyd1, fFiberLogic);
