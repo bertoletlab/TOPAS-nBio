@@ -62,6 +62,11 @@ private:
     std::vector< std::vector<G4String> > fReactionSpecies;
     std::vector< std::vector<G4String> > fReactionProducts;
     std::vector<G4double> fReactionRates;
+    // Per-reaction kinetic model, in the numbering the decks and TsIRTConfiguration use:
+    // 1 and 3 fully diffusion controlled, 2 and 4 partially diffusion controlled, 5 spin
+    // statistical. Only the IRT path used to read this, so the step-by-step reaction table was
+    // built as though every reaction were fully diffusion controlled.
+    std::vector<G4int> fReactionTypes;
     
     G4bool fSetWaterConfiguration;
 

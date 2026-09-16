@@ -175,6 +175,9 @@ void TsEmDNAChemistry::DefineParameters()
             G4String* product = fPm->GetStringVector(parName.substr(0,parName.find("Products")-1) + "/Products");
             G4int nbOfProduct = fPm->GetVectorLength(parName.substr(0,parName.find("Products")-1) + "/Products");
             G4double reactionRate = fPm->GetDoubleParameter(parName.substr(0,parName.find("Products")-1) + "/ReactionRate","perMolarConcentration perTime");
+            G4int reactionType = 1;
+            if ( fPm->ParameterExists(parName.substr(0,parName.find("Products")-1) + "/ReactionType") )
+                reactionType = fPm->GetIntegerParameter(parName.substr(0,parName.find("Products")-1) + "/ReactionType");
             
             std::vector<G4String> reactors;
             std::vector<G4String> products;
@@ -208,6 +211,7 @@ void TsEmDNAChemistry::DefineParameters()
             fReactionSpecies.push_back(reactors);
             fReactionProducts.push_back(products);
             fReactionRates.push_back(reactionRate);
+            fReactionTypes.push_back(reactionType);
         }
     }
 
@@ -491,6 +495,27 @@ void TsEmDNAChemistry::ConstructMolecule()
     
     G4MoleculeTable::Instance()->CreateConfiguration("Oxy", G4Oxygen::Definition());
     G4MoleculeTable::Instance()->GetConfiguration("Oxy")->SetVanDerVaalsRadius(0.20*nm);
+
+    // Van der Waals radii for the standard species, matching the table TsIRTConfiguration
+    // carries. Only Oxy had one before, so every other molecule kept a Geant4 default near
+    // 0.1 nm. That default is harmless while every reaction is treated as fully diffusion
+    // controlled, since the encounter radius then comes from the observed rate and the van der
+    // Waals radius is never consulted. It stops being harmless the moment a reaction is marked
+    // partially diffusion controlled, because the contact radius is then the encounter radius
+    // and a radius that small puts the diffusion-limited rate below the measured rate, which
+    // drives the activation rate negative.
+    struct { const char* name; G4double radius; } vdw[] = {
+        {"H",    0.19*nm},
+        {"OH",   0.22*nm},
+        {"H2O2", 0.21*nm},
+        {"H2",   0.14*nm},
+        {"e_aq", 0.50*nm},
+        {"H3Op", 0.25*nm},
+    };
+    for (auto& m : vdw) {
+        G4MolecularConfiguration* c = G4MoleculeTable::Instance()->GetConfiguration(m.name);
+        if (c != nullptr) c->SetVanDerVaalsRadius(m.radius);
+    }
     
     G4MolecularConfiguration* OHm =
     G4MoleculeTable::Instance()-> CreateConfiguration("OHm", G4OH::Definition(), -1, 5.0e-9 * (m2 / s));
@@ -819,8 +844,52 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
     G4DNAMolecularReactionData* reactionData;
     for ( size_t t = 0; t < fReactionSpecies.size(); t++ ) {
         reactionData = new G4DNAMolecularReactionData(fReactionRates[t], reactions[fReactionSpecies[t][0]], reactions[fReactionSpecies[t][1]]);
-        G4int reactionType = 1;
-        reactionData->SetReactionID(reactionType);
+        reactionData->SetReactionID(1);
+
+        // Apply the reaction's kinetic model. The constructor leaves every reaction fully
+        // diffusion controlled: an encounter radius derived from the observed rate through
+        // Smoluchowski, and a reaction on every encounter inside it. Reactions measured to be
+        // slower than the diffusion limit are not that, and the two descriptions diverge inside
+        // a spur even though they agree on the bulk rate by construction, because a pair that
+        // starts correlated re-encounters many times.
+        //
+        // Geant4's SetReactionType(1) already carries the partially diffusion controlled
+        // treatment: it takes the van der Waals contact radius, derives
+        // kact = kdiff kobs / (kdiff - kobs), and sets a per-encounter probability from an
+        // Rs of 0.29 nm, separating its own type II and type IV by the Onsager radius. Note the
+        // numbering differs from the decks': what the deck calls type 2 or 4 is the single
+        // Geant4 type 1.
+        G4int reactionType = (t < fReactionTypes.size()) ? fReactionTypes[t] : 1;
+        if ( reactionType == 2 || reactionType == 4 ) {
+            reactionData->SetReactionType(1);
+            // A partially diffusion controlled reaction is by definition slower than its own
+            // diffusion limit. If the observed rate exceeds the limit that the contact radius
+            // and diffusion coefficients imply, kact = kdiff kobs / (kdiff - kobs) changes sign
+            // and the per-encounter probability comes out negative or above one. Geant4 does not
+            // check this and TsIRTConfiguration's equivalent check is commented out, so a bad
+            // pairing of rate convention and radii runs to completion and quietly produces
+            // whatever that arithmetic gives.
+            G4double prob = reactionData->GetProbability();
+            if ( prob < 0. || prob > 1. ) {
+                G4cerr << "TOPAS is exiting due to an inconsistent chemistry configuration."
+                       << G4endl;
+                G4cerr << "  Reaction " << fReactionSpecies[t][0] << " + " << fReactionSpecies[t][1]
+                       << " is declared partially diffusion controlled (deck ReactionType "
+                       << reactionType << ")," << G4endl;
+                G4cerr << "  but its observed rate "
+                       << fReactionRates[t]/(1e-3*m3/(mole*s)) << " /M/s exceeds the diffusion"
+                       << " limit implied by the" << G4endl;
+                G4cerr << "  van der Waals radii and diffusion coefficients, giving a"
+                       << " per-encounter probability of " << prob << "." << G4endl;
+                G4cerr << "  Either the rate belongs to a different convention for identical"
+                       << " reactants, or the radii are wrong." << G4endl;
+                fPm->AbortSession(1);
+            }
+        } else if ( reactionType == 5 ) {
+            // Spin statistics: only the singlet fraction of encounters reacts. Geant4 has no
+            // branch for this, so it is applied directly, matching TsIRTConfiguration.
+            reactionData->SetProbability(0.25);
+        }
         
         for ( size_t u = 0; u < fReactionProducts[t].size(); u++ ) {
             if ( "none" != fReactionProducts[t][u] ) // This comparison crashes if the order is fReactionProducts[t][u] != "none"
