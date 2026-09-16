@@ -102,12 +102,19 @@ G4bool TsSBSScoreGValue::ProcessHits(G4Step* aStep, G4TouchableHistory*)
         if ( 0 < fNbOfMoleculesToScavenge ) {
             G4Molecule* molecule = GetMolecule(aTrack);
             G4int moleculeID = molecule->GetMoleculeID();
-            G4double t = aTrack->GetGlobalTime();
+            // The survival probability against a first-order sink of capacity S must be
+            // evaluated over THIS STEP's duration. Using the track's absolute global time
+            // here gives 1 - exp(-S t), the cumulative probability of having been scavenged
+            // by time t, and draws against it afresh at every step, so a molecule is offered
+            // its whole accumulated chance of dying over and over. The effective removal rate
+            // is then far above S, and increasingly so the longer the molecule lives, which
+            // bends exactly the late-time part of a G value that a scavenger measurement is
+            // meant to probe.
+            G4double dt = aStep->GetDeltaTime();
             for ( int i = 0; i < fNbOfMoleculesToScavenge; i++ ) {
                 if ( moleculeID == fMoleculeIDToScavenge[i] ) {
-                    G4double probability = 1. - std::exp( -fScavengingCapacity[i] * t );
+                    G4double probability = 1. - std::exp( -fScavengingCapacity[i] * dt );
                     if ( G4UniformRand() < probability ) {
-                        std::cout << " scavenged " << molecule->GetName() << std::endl;
                         aStep->GetTrack()->SetTrackStatus(fStopAndKill);
                         return true;
                     }
