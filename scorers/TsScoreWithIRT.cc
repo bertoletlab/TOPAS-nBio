@@ -30,7 +30,7 @@
 TsScoreWithIRT::TsScoreWithIRT(TsParameterManager* pM, TsMaterialManager* mM, TsGeometryManager* gM, TsScoringManager* scM, TsExtensionManager* eM,
                                G4String scorerName, G4String quantity, G4String outFileName, G4bool isSubScorer)
 : TsVNtupleScorer(pM, mM, gM, scM, eM, scorerName, quantity, outFileName, isSubScorer),
-fPm(pM), fEnergyDepositPerEvent(0), fEnergyLossKill(0), fName(scorerName)
+fPm(pM), fEnergyDepositPerEvent(0), fSumEnergy(0), fSumEnergy2(0), fEnergyLossKill(0), fName(scorerName)
 {
     SetUnit("");
 
@@ -54,6 +54,8 @@ fPm(pM), fEnergyDepositPerEvent(0), fEnergyLossKill(0), fName(scorerName)
     
     fNtuple->RegisterColumnD(&fGValue, "GValue: number of molecules per 100 eV of energy deposit", "");
     fNtuple->RegisterColumnD(&fGValueError, "GValue statistical error", "");
+    fNtuple->RegisterColumnD(&fGValueRatio, "GValue ratio-of-sums: 100*sum(N)/sum(E in eV)", "");
+    fNtuple->RegisterColumnD(&fGValueRatioError, "GValue ratio-of-sums statistical error", "");
     
     if (fPm->ParameterExists(GetFullParmName("ReportMoleculeYield")) &&
         fPm->GetBooleanParameter(GetFullParmName("ReportMoleculeYield"))){
@@ -212,6 +214,7 @@ void TsScoreWithIRT::UserHookForEndOfEvent() {
                 
                 fMoleculesPerSpeciePerTime[name][time] += gvalue;
                 fMoleculesPerSpeciePerTime2[name][time] += gvalue*gvalue;
+                fMoleculesTimesEnergy[name][time] += gvalue*(fEnergyDepositPerEvent/eV);
                 
                 gvalue *= 100/(fEnergyDepositPerEvent/eV);
                 
@@ -241,6 +244,8 @@ void TsScoreWithIRT::UserHookForEndOfEvent() {
         
         irt.clear();
         fIRT->Clean();
+        fSumEnergy  += fEnergyDepositPerEvent/eV;
+        fSumEnergy2 += (fEnergyDepositPerEvent/eV)*(fEnergyDepositPerEvent/eV);
         fNbOfScoredEvents++;
     }
     
@@ -292,6 +297,14 @@ void TsScoreWithIRT::AbsorbResultsFromWorkerScorer(TsVScorer* workerScorer) {
     TsScoreWithIRT* workerGvalueScorer = dynamic_cast<TsScoreWithIRT*>(workerScorer);
     
     fNbOfScoredEvents += workerGvalueScorer->fNbOfScoredEvents;
+    for ( auto& speciesAndTimes : workerGvalueScorer->fMoleculesTimesEnergy )
+        for ( auto& timeAndValue : speciesAndTimes.second )
+            fMoleculesTimesEnergy[speciesAndTimes.first][timeAndValue.first] += timeAndValue.second;
+    workerGvalueScorer->fMoleculesTimesEnergy.clear();
+    fSumEnergy  += workerGvalueScorer->fSumEnergy;
+    fSumEnergy2 += workerGvalueScorer->fSumEnergy2;
+    workerGvalueScorer->fSumEnergy = 0.0;
+    workerGvalueScorer->fSumEnergy2 = 0.0;
     fIRTExecutionTime += workerGvalueScorer->fIRTExecutionTime;
     fIRTExecutionTimeStdv += workerGvalueScorer->fIRTExecutionTimeStdv;
     
@@ -414,6 +427,28 @@ void TsScoreWithIRT::Output() {
                 fGValueError = 1.0;
                 fMoleculesError = 1.0;
             }
+
+            // Ratio-of-sums estimator, delta-method variance. Identical to TsSBSScoreGValue.
+            fGValueRatio = 0.0;
+            fGValueRatioError = 0.0;
+            if ( fSumEnergy > 0 ) {
+                G4double n = fNbOfScoredEvents;
+                G4double sumN = fMoleculesPerSpeciePerTime[fMoleculeName][fTime];
+                G4double sumN2 = fMoleculesPerSpeciePerTime2[fMoleculeName][fTime];
+                G4double sumNE = fMoleculesTimesEnergy[fMoleculeName][fTime];
+                G4double meanN = sumN / n;
+                G4double meanE = fSumEnergy / n;
+                fGValueRatio = 100.0 * sumN / fSumEnergy;
+                if ( n > 1 && meanN > 0 ) {
+                    G4double varN = (sumN2 - n*meanN*meanN) / (n - 1);
+                    G4double varE = (fSumEnergy2 - n*meanE*meanE) / (n - 1);
+                    G4double covNE = (sumNE - n*meanN*meanE) / (n - 1);
+                    G4double relVar = varN/(meanN*meanN) + varE/(meanE*meanE)
+                                      - 2.0*covNE/(meanN*meanE);
+                    if ( relVar > 0 )
+                        fGValueRatioError = fGValueRatio * sqrt(relVar / n);
+                }
+            }
             fNtuple->Fill();
         }
     }
@@ -489,6 +524,9 @@ void TsScoreWithIRT::Clear() {
     fGValuePerSpeciePerTime2.clear();
     fMoleculesPerSpeciePerTime.clear();
     fMoleculesPerSpeciePerTime2.clear();
+    fMoleculesTimesEnergy.clear();
+    fSumEnergy = 0.0;
+    fSumEnergy2 = 0.0;
     fIRTExecutionTime = 0;
     fNbOfScoredEvents = 0;
     if (fReportDelta) {
