@@ -23,7 +23,7 @@
 TsSBSScoreGValue::TsSBSScoreGValue(TsParameterManager* pM, TsMaterialManager* mM, TsGeometryManager* gM, TsScoringManager* scM, TsExtensionManager* eM,
                              G4String scorerName, G4String quantity, G4String outFileName, G4bool isSubScorer)
 : TsVNtupleScorer(pM, mM, gM, scM, eM, scorerName, quantity, outFileName, isSubScorer),
-fPm(pM), fEnergyDepositPerEvent(0)
+fPm(pM), fEnergyDepositPerEvent(0), fSumEnergy(0), fSumEnergy2(0)
 {
     if ( G4Threading::IsWorkerThread() )  {
         G4VMoleculeCounter::Instance()->Use(true);
@@ -36,7 +36,11 @@ fPm(pM), fEnergyDepositPerEvent(0)
     fNtuple->RegisterColumnD(&fGValueError, "GValue statistical error", "");
     fNtuple->RegisterColumnD(&fTime,    "Time", "picosecond");
     fNtuple->RegisterColumnS(&fMoleculeName, "MoleculeName");
-    
+    // Appended after the original four columns so existing parsers keep working unchanged.
+    fNtuple->RegisterColumnD(&fGValueRatio, "GValue ratio-of-sums: 100*sum(N)/sum(E in eV)", "");
+    fNtuple->RegisterColumnD(&fGValueRatioError, "GValue ratio-of-sums statistical error", "");
+
+
     fTimeToRecord = fPm->GetDoubleVector(GetFullParmName("TimeToRecord"),"Time");
     fNbTimeToRecord = fPm->GetVectorLength(GetFullParmName("TimeToRecord"));
     
@@ -126,18 +130,27 @@ void TsSBSScoreGValue::UserHookForEndOfEvent() {
         G4MoleculeCounter::RecordedMolecules species = G4MoleculeCounter::Instance()->GetRecordedMolecules();
         if ( species.get() == 0 ) return;
         
+        G4double energyInEV = fEnergyDepositPerEvent / eV;
+
         auto molecule_it = species->begin();
         while ( molecule_it != species->end() ) {
             for ( int iTime = 0; iTime < fNbTimeToRecord; iTime++ ) {
                 G4int moleculeAtSpecificTime = G4MoleculeCounter::Instance()->GetNMoleculesAtTime((*molecule_it), fTimeToRecord[iTime]);
                 G4String moleculeID = (*molecule_it)->GetName();
-                G4double gvalue = 100.0 * moleculeAtSpecificTime/(fEnergyDepositPerEvent/eV);
+                G4double gvalue = 100.0 * moleculeAtSpecificTime/energyInEV;
                 fGValuePerSpeciePerTime[moleculeID][fTimeToRecord[iTime]] += gvalue;
                 fGValuePerSpeciePerTime2[moleculeID][fTimeToRecord[iTime]] += gvalue * gvalue;
+
+                G4double n = moleculeAtSpecificTime;
+                fMoleculesPerSpeciePerTime[moleculeID][fTimeToRecord[iTime]] += n;
+                fMoleculesPerSpeciePerTime2[moleculeID][fTimeToRecord[iTime]] += n * n;
+                fMoleculesTimesEnergy[moleculeID][fTimeToRecord[iTime]] += n * energyInEV;
             }
             molecule_it++;
         }
-        
+
+        fSumEnergy += energyInEV;
+        fSumEnergy2 += energyInEV * energyInEV;
         fNbOfScoredEvents++;
     }
     fTotalTrackLength = 0.0;
@@ -148,13 +161,33 @@ void TsSBSScoreGValue::UserHookForEndOfEvent() {
 }
 
 
+// Merge a worker's species/time sums into the master's. Unlike the two hand-written loops below
+// this does not assume the master already holds every key the worker holds.
+static void MergeSpeciesTimeMap(std::map<G4String, std::map<G4double, G4double> >& master,
+                                std::map<G4String, std::map<G4double, G4double> >& worker) {
+    for ( auto& speciesAndTimes : worker )
+        for ( auto& timeAndValue : speciesAndTimes.second )
+            master[speciesAndTimes.first][timeAndValue.first] += timeAndValue.second;
+    worker.clear();
+}
+
+
 void TsSBSScoreGValue::AbsorbResultsFromWorkerScorer(TsVScorer* workerScorer) {
     TsVNtupleScorer::AbsorbResultsFromWorkerScorer(workerScorer);
-    
+
     TsSBSScoreGValue* workerGvalueScorer = dynamic_cast<TsSBSScoreGValue*>(workerScorer);
-    
+
     fNbOfScoredEvents += workerGvalueScorer->fNbOfScoredEvents;
-    
+
+    MergeSpeciesTimeMap(fMoleculesPerSpeciePerTime,  workerGvalueScorer->fMoleculesPerSpeciePerTime);
+    MergeSpeciesTimeMap(fMoleculesPerSpeciePerTime2, workerGvalueScorer->fMoleculesPerSpeciePerTime2);
+    MergeSpeciesTimeMap(fMoleculesTimesEnergy,       workerGvalueScorer->fMoleculesTimesEnergy);
+    fSumEnergy  += workerGvalueScorer->fSumEnergy;
+    fSumEnergy2 += workerGvalueScorer->fSumEnergy2;
+    workerGvalueScorer->fSumEnergy = 0.0;
+    workerGvalueScorer->fSumEnergy2 = 0.0;
+
+
     std::map<G4String, std::map<G4double, G4double> >::iterator wIter;
     std::map<G4String, std::map<G4double, G4double> >::iterator mIter;
     
@@ -221,6 +254,32 @@ void TsSBSScoreGValue::Output() {
             }
             fTime = iter->first;
             fMoleculeName = wIter->first;
+
+            // Ratio-of-sums estimator and its uncertainty. The variance is the standard delta
+            // method for a ratio of two correlated means, which is what makes this estimator so
+            // much steadier than the per-event one: n and E are strongly positively correlated,
+            // so the covariance term cancels most of the straggling that the per-event ratio
+            // leaves in.
+            fGValueRatio = 0.0;
+            fGValueRatioError = 0.0;
+            if ( fSumEnergy > 0 ) {
+                G4double n = fNbOfScoredEvents;
+                G4double sumN = fMoleculesPerSpeciePerTime[fMoleculeName][fTime];
+                G4double sumN2 = fMoleculesPerSpeciePerTime2[fMoleculeName][fTime];
+                G4double sumNE = fMoleculesTimesEnergy[fMoleculeName][fTime];
+                G4double meanN = sumN / n;
+                G4double meanE = fSumEnergy / n;
+                fGValueRatio = 100.0 * sumN / fSumEnergy;
+                if ( n > 1 && meanN > 0 ) {
+                    G4double varN = (sumN2 - n*meanN*meanN) / (n - 1);
+                    G4double varE = (fSumEnergy2 - n*meanE*meanE) / (n - 1);
+                    G4double covNE = (sumNE - n*meanN*meanE) / (n - 1);
+                    G4double relVar = varN/(meanN*meanN) + varE/(meanE*meanE)
+                                      - 2.0*covNE/(meanN*meanE);
+                    if ( relVar > 0 )
+                        fGValueRatioError = fGValueRatio * sqrt(relVar / n);
+                }
+            }
             fNtuple->Fill();
         }
     }
@@ -231,6 +290,12 @@ void TsSBSScoreGValue::Output() {
 
 void TsSBSScoreGValue::Clear() {
     fGValuePerSpeciePerTime.clear();
+    fGValuePerSpeciePerTime2.clear();
+    fMoleculesPerSpeciePerTime.clear();
+    fMoleculesPerSpeciePerTime2.clear();
+    fMoleculesTimesEnergy.clear();
+    fSumEnergy = 0.0;
+    fSumEnergy2 = 0.0;
     fNbOfScoredEvents = 0;
     UpdateFileNameForUpcomingRun();
 }

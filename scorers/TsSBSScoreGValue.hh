@@ -40,14 +40,30 @@ protected:
     G4double fGValueError;
     G4double fTime;
     G4String fMoleculeName;
-    
+    G4double fGValueRatio;
+    G4double fGValueRatioError;
+
     std::map<G4String, std::map<G4double, G4double> > fGValuePerSpeciePerTime;
     std::map<G4String, std::map<G4double, G4double> > fGValuePerSpeciePerTime2;
-    
+
+    // Sums for the ratio-of-sums estimator, G = 100 * sum(N) / sum(E). The per-event ratio the
+    // columns above report is a different estimator of the same quantity and a worse one: a G
+    // value is molecules per 100 eV ABSORBED, so the energy belongs in the denominator of one
+    // ratio taken over the whole run, not inside a per-event ratio that is then averaged. Because
+    // E varies event to event through straggling, averaging n/E over-weights the low-energy
+    // events, and a single event that deposits almost nothing while making one molecule sends the
+    // estimate to infinity. Seen in practice: 8 seeds of the shipped 300-history example gave
+    // G(H2O2) at 1 us of 0.40 to 0.48 on six of them and 8.96 on one.
+    std::map<G4String, std::map<G4double, G4double> > fMoleculesPerSpeciePerTime;   // sum n
+    std::map<G4String, std::map<G4double, G4double> > fMoleculesPerSpeciePerTime2;  // sum n^2
+    std::map<G4String, std::map<G4double, G4double> > fMoleculesTimesEnergy;        // sum n*E
+
 private:
     TsParameterManager* fPm;
     
     G4double fEnergyDepositPerEvent;
+    G4double fSumEnergy;    // sum of per-event deposited energy, eV
+    G4double fSumEnergy2;   // sum of its square
     G4double* fTimeToRecord;
     G4int fNbTimeToRecord;
     G4int fNbOfScoredEvents;
