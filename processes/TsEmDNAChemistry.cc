@@ -848,64 +848,51 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
         reactionData = new G4DNAMolecularReactionData(fReactionRates[t], reactions[fReactionSpecies[t][0]], reactions[fReactionSpecies[t][1]]);
         reactionData->SetReactionID(1);
 
-        // Apply the reaction's kinetic model. The constructor leaves every reaction fully
-        // diffusion controlled: an encounter radius derived from the observed rate through
-        // Smoluchowski, and a reaction on every encounter inside it. Reactions measured to be
-        // slower than the diffusion limit are not that, and the two descriptions diverge inside
-        // a spur even though they agree on the bulk rate by construction, because a pair that
-        // starts correlated re-encounters many times.
+        // The deck's per-reaction ReactionType CANNOT be honoured on the step-by-step path in
+        // Geant4 11.3.2, and an earlier version of this code was wrong to try.
         //
-        // Geant4's SetReactionType(1) already carries the partially diffusion controlled
-        // treatment: it takes the van der Waals contact radius, derives
-        // kact = kdiff kobs / (kdiff - kobs), and sets a per-encounter probability from an
-        // Rs of 0.29 nm, separating its own type II and type IV by the Onsager radius. Note the
-        // numbering differs from the decks': what the deck calls type 2 or 4 is the single
-        // Geant4 type 1.
+        // What "partially diffusion controlled" has to mean in a step-by-step Brownian
+        // simulation is: the pair meets, reacts with probability p, and otherwise keeps
+        // diffusing and may meet again. Geant4 has the probability --
+        // G4DNAMolecularReactionData::SetReactionType(1) computes it from
+        // kact = kdiff kobs / (kdiff - kobs) and an Rs of 0.29 nm -- but NOTHING IN THE
+        // STEP-BY-STEP CHAIN READS IT. G4DNAMolecularReaction::FindReaction asks the reaction
+        // model for a radius and reacts on every encounter inside it, and both shipped models,
+        // G4DNASmoluchowskiReactionModel and G4DiffusionControlledReactionModel, return
+        // GetEffectiveReactionRadius(). GetProbability() has no consumer outside
+        // G4DNAMolecularDissociation, which is about decay channels, not reactions.
+        //
+        // So calling SetReactionType(1) here does not add partial diffusion control. It
+        // OVERWRITES the encounter radius -- the constructor's ComputeEffectiveRadius sets
+        // kobs / (4 pi D_sum N_A), the Smoluchowski radius that reproduces the measured rate,
+        // and SetReactionType(1) replaces it with the van der Waals contact radius (its type II)
+        // or an Onsager-corrected one (its type IV) -- and then discards the measured rate,
+        // which afterwards enters nothing. The reaction is still fully diffusion controlled; it
+        // has simply been given a different radius and lost its rate constant.
+        //
+        // Measured consequence, ratio-of-sums estimator, 1000 histories, 8 seeds, G at 1 us per
+        // 100 eV. Applying the types moved the hydrogen atom from 0.591 to 1.112 against a
+        // measured 0.600, and the solvated electron from 3.089 to 2.324 against 2.600. That is
+        // e_aq + H3O+ -> H, the one reaction the default file declares type 4: its Smoluchowski
+        // radius is 0.21 nm and the Onsager-corrected van der Waals radius is about 1.2 nm, so
+        // the reaction ran with roughly five times the encounter radius it was calibrated for. A
+        // sensitivity screen confirmed the other half of the diagnosis: with the types applied,
+        // the rates of every typed reaction had EXACTLY zero effect on every yield, because
+        // nothing downstream reads them any more.
+        //
+        // The types are therefore left unapplied, which is what this class did before, and the
+        // decks that declare them are told so instead of being quietly ignored. Implementing
+        // real partial diffusion control means a reaction model that rejects an encounter with
+        // probability 1-p and lets the pair continue, which is a genuine addition to the
+        // step-by-step path rather than a parameter to set, and is not attempted here.
         G4int reactionType = (t < fReactionTypes.size()) ? fReactionTypes[t] : 1;
-        if ( reactionType == 2 || reactionType == 4 ) {
-            reactionData->SetReactionType(1);
-            // A partially diffusion controlled reaction is by definition slower than its own
-            // diffusion limit. If the observed rate exceeds the limit that the contact radius
-            // and diffusion coefficients imply, kact = kdiff kobs / (kdiff - kobs) changes sign
-            // and the per-encounter probability comes out negative or above one. Geant4 does not
-            // check this and TsIRTConfiguration's equivalent check is commented out, so a bad
-            // pairing of rate convention and radii runs to completion and quietly produces
-            // whatever that arithmetic gives.
-            //
-            // This is not hypothetical and it is not a user error: the two reaction files
-            // TOPAS-nBio itself ships disagree on the convention for identical reactants.
-            // SBSGetGValue/TOPASDefaultReactions.txt gives OH + OH as 0.55e10 /M/s and
-            // IRTGetGValue/TOPAS-DefaultReactions.txt gives 1.1e10, exactly a factor two apart,
-            // which is the difference between counting reaction events and counting hydroxyl
-            // disappearances. Geant4 already halves kdiff for identical reactants, so it wants
-            // the first convention and 1.1e10 lands above the limit.
-            //
-            // An IRT deck reaches this code too, because it loads TsEmDNAChemistry for the
-            // species definitions, but its reaction kinetics come from TsIRTConfiguration's own
-            // table and nothing consumes the one built here. Aborting would therefore break
-            // working IRT decks over a table they never read. So the reaction falls back to
-            // fully diffusion controlled, exactly what it was before ReactionType was honoured
-            // at all, and the fallback is reported loudly at the end of table construction.
-            G4double prob = reactionData->GetProbability();
-            if ( prob < 0. || prob > 1. ) {
-                std::ostringstream note;
-                note << fReactionSpecies[t][0] << " + " << fReactionSpecies[t][1]
-                     << " (deck ReactionType " << reactionType << "), observed rate "
-                     << fReactionRates[t]/(1e-3*m3/(mole*s))
-                     << " /M/s gives a per-encounter probability of " << prob;
-                fRevertedReactionTypes.push_back(note.str());
-                delete reactionData;
-                reactionData = new G4DNAMolecularReactionData(fReactionRates[t],
-                                                              reactions[fReactionSpecies[t][0]],
-                                                              reactions[fReactionSpecies[t][1]]);
-                reactionData->SetReactionID(1);
-            }
-        } else if ( reactionType == 5 ) {
-            // Spin statistics: only the singlet fraction of encounters reacts. Geant4 has no
-            // branch for this, so it is applied directly, matching TsIRTConfiguration.
-            reactionData->SetProbability(0.25);
+        if ( reactionType == 2 || reactionType == 4 || reactionType == 5 ) {
+            std::ostringstream note;
+            note << fReactionSpecies[t][0] << " + " << fReactionSpecies[t][1]
+                 << " declares ReactionType " << reactionType;
+            fUnappliedReactionTypes.push_back(note.str());
         }
-        
+
         for ( size_t u = 0; u < fReactionProducts[t].size(); u++ ) {
             if ( "none" != fReactionProducts[t][u] ) // This comparison crashes if the order is fReactionProducts[t][u] != "none"
                 reactionData->AddProduct(reactions[ fReactionProducts[t][u] ] );
@@ -914,35 +901,30 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
         theReactionTable->SetReaction(reactionData);
     }
 
-    if ( !fRevertedReactionTypes.empty() ) {
+    if ( !fUnappliedReactionTypes.empty() ) {
         G4cout << G4endl;
         G4cout << "############################################################################"
                << G4endl;
-        G4cout << "TsEmDNAChemistry: " << fRevertedReactionTypes.size() << " reaction(s) declared"
-               << " partially diffusion controlled could not be" << G4endl;
-        G4cout << "applied and fell back to FULLY DIFFUSION CONTROLLED:" << G4endl;
-        for ( size_t i = 0; i < fRevertedReactionTypes.size(); i++ )
-            G4cout << "  - " << fRevertedReactionTypes[i] << G4endl;
-        G4cout << "The observed rate exceeds the diffusion limit implied by the van der Waals"
-               << " radii and" << G4endl;
-        G4cout << "diffusion coefficients, so the rate and the radii belong to different"
-               << " conventions." << G4endl;
-        G4cout << "This is harmless for an IRT deck, which builds its kinetics in"
-               << " TsIRTConfiguration and" << G4endl;
-        G4cout << "never reads this table. For a step-by-step deck it means the reaction is NOT"
-               << " running" << G4endl;
-        G4cout << "the kinetics the deck asked for. Set"
-               << " b:Ch/AbortOnInconsistentReactionType = \"True\" to make" << G4endl;
-        G4cout << "this fatal instead." << G4endl;
+        G4cout << "TsEmDNAChemistry: " << fUnappliedReactionTypes.size() << " reaction(s) declare"
+               << " a ReactionType that the step-by-step" << G4endl;
+        G4cout << "chemistry CANNOT apply, and it has been IGNORED:" << G4endl;
+        for ( size_t i = 0; i < fUnappliedReactionTypes.size(); i++ )
+            G4cout << "  - " << fUnappliedReactionTypes[i] << G4endl;
+        G4cout << "Partial diffusion control needs a per-encounter probability, and nothing in"
+               << G4endl;
+        G4cout << "G4DNAMolecularReaction reads one: both shipped reaction models react on every"
+               << G4endl;
+        G4cout << "encounter inside GetEffectiveReactionRadius(). These reactions run fully"
+               << G4endl;
+        G4cout << "diffusion controlled at the Smoluchowski radius implied by their measured"
+               << G4endl;
+        G4cout << "rate, which is the same behaviour as a deck that declares no type at all."
+               << G4endl;
+        G4cout << "The IRT path DOES honour ReactionType, through TsIRTConfiguration, so a deck"
+               << G4endl;
+        G4cout << "needing these kinetics should use it." << G4endl;
         G4cout << "############################################################################"
                << G4endl << G4endl;
-
-        if ( fPm->ParameterExists("Ch/AbortOnInconsistentReactionType") &&
-             fPm->GetBooleanParameter("Ch/AbortOnInconsistentReactionType") ) {
-            G4cerr << "TOPAS is exiting: Ch/AbortOnInconsistentReactionType is True and the"
-                   << " reaction table above is inconsistent." << G4endl;
-            fPm->AbortSession(1);
-        }
     }
 }
 

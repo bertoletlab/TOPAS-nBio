@@ -67,10 +67,10 @@ private:
     // statistical. Only the IRT path used to read this, so the step-by-step reaction table was
     // built as though every reaction were fully diffusion controlled.
     std::vector<G4int> fReactionTypes;
-    // Reactions whose declared partially-diffusion-controlled kinetics could not be applied, and
-    // so fell back to fully diffusion controlled. Reported together at the end of table
-    // construction rather than one line at a time, which TOPAS's own output would bury.
-    std::vector<std::string> fRevertedReactionTypes;
+    // Reactions whose declared ReactionType the step-by-step path cannot apply, reported
+    // together at the end of table construction rather than one line at a time, which TOPAS's
+    // own output would bury.
+    std::vector<std::string> fUnappliedReactionTypes;
 
     G4bool fSetWaterConfiguration;
 
