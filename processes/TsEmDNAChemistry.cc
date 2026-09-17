@@ -15,6 +15,7 @@
 #include "G4DNAOneStepThermalizationModel.hh"
 #include "TsDNARuddIonisationExtendedModel.hh"
 #include "G4DNAMolecularStepByStepModel.hh"
+#include <sstream>
 #include "G4DNASmoluchowskiReactionModel.hh"
 
 #include "TsDNAFirstOrderReaction.hh"
@@ -75,6 +76,7 @@
 #include "G4Threading.hh"
 
 #include "G4DNAMolecularStepByStepModel.hh"
+#include <sstream>
 #include "G4DNAMolecularIRTModel.hh"
 #include "G4DNAIndependentReactionTimeModel.hh"
 #include "G4ChemicalMoleculeFinder.hh"
@@ -869,21 +871,34 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
             // check this and TsIRTConfiguration's equivalent check is commented out, so a bad
             // pairing of rate convention and radii runs to completion and quietly produces
             // whatever that arithmetic gives.
+            //
+            // This is not hypothetical and it is not a user error: the two reaction files
+            // TOPAS-nBio itself ships disagree on the convention for identical reactants.
+            // SBSGetGValue/TOPASDefaultReactions.txt gives OH + OH as 0.55e10 /M/s and
+            // IRTGetGValue/TOPAS-DefaultReactions.txt gives 1.1e10, exactly a factor two apart,
+            // which is the difference between counting reaction events and counting hydroxyl
+            // disappearances. Geant4 already halves kdiff for identical reactants, so it wants
+            // the first convention and 1.1e10 lands above the limit.
+            //
+            // An IRT deck reaches this code too, because it loads TsEmDNAChemistry for the
+            // species definitions, but its reaction kinetics come from TsIRTConfiguration's own
+            // table and nothing consumes the one built here. Aborting would therefore break
+            // working IRT decks over a table they never read. So the reaction falls back to
+            // fully diffusion controlled, exactly what it was before ReactionType was honoured
+            // at all, and the fallback is reported loudly at the end of table construction.
             G4double prob = reactionData->GetProbability();
             if ( prob < 0. || prob > 1. ) {
-                G4cerr << "TOPAS is exiting due to an inconsistent chemistry configuration."
-                       << G4endl;
-                G4cerr << "  Reaction " << fReactionSpecies[t][0] << " + " << fReactionSpecies[t][1]
-                       << " is declared partially diffusion controlled (deck ReactionType "
-                       << reactionType << ")," << G4endl;
-                G4cerr << "  but its observed rate "
-                       << fReactionRates[t]/(1e-3*m3/(mole*s)) << " /M/s exceeds the diffusion"
-                       << " limit implied by the" << G4endl;
-                G4cerr << "  van der Waals radii and diffusion coefficients, giving a"
-                       << " per-encounter probability of " << prob << "." << G4endl;
-                G4cerr << "  Either the rate belongs to a different convention for identical"
-                       << " reactants, or the radii are wrong." << G4endl;
-                fPm->AbortSession(1);
+                std::ostringstream note;
+                note << fReactionSpecies[t][0] << " + " << fReactionSpecies[t][1]
+                     << " (deck ReactionType " << reactionType << "), observed rate "
+                     << fReactionRates[t]/(1e-3*m3/(mole*s))
+                     << " /M/s gives a per-encounter probability of " << prob;
+                fRevertedReactionTypes.push_back(note.str());
+                delete reactionData;
+                reactionData = new G4DNAMolecularReactionData(fReactionRates[t],
+                                                              reactions[fReactionSpecies[t][0]],
+                                                              reactions[fReactionSpecies[t][1]]);
+                reactionData->SetReactionID(1);
             }
         } else if ( reactionType == 5 ) {
             // Spin statistics: only the singlet fraction of encounters reacts. Geant4 has no
@@ -897,6 +912,37 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
         }
         std::cout << " Re-set reaction kobs to : " << fReactionRates[t]/(1e-3*m3/(mole*s)) << "/M/s" << std::endl;
         theReactionTable->SetReaction(reactionData);
+    }
+
+    if ( !fRevertedReactionTypes.empty() ) {
+        G4cout << G4endl;
+        G4cout << "############################################################################"
+               << G4endl;
+        G4cout << "TsEmDNAChemistry: " << fRevertedReactionTypes.size() << " reaction(s) declared"
+               << " partially diffusion controlled could not be" << G4endl;
+        G4cout << "applied and fell back to FULLY DIFFUSION CONTROLLED:" << G4endl;
+        for ( size_t i = 0; i < fRevertedReactionTypes.size(); i++ )
+            G4cout << "  - " << fRevertedReactionTypes[i] << G4endl;
+        G4cout << "The observed rate exceeds the diffusion limit implied by the van der Waals"
+               << " radii and" << G4endl;
+        G4cout << "diffusion coefficients, so the rate and the radii belong to different"
+               << " conventions." << G4endl;
+        G4cout << "This is harmless for an IRT deck, which builds its kinetics in"
+               << " TsIRTConfiguration and" << G4endl;
+        G4cout << "never reads this table. For a step-by-step deck it means the reaction is NOT"
+               << " running" << G4endl;
+        G4cout << "the kinetics the deck asked for. Set"
+               << " b:Ch/AbortOnInconsistentReactionType = \"True\" to make" << G4endl;
+        G4cout << "this fatal instead." << G4endl;
+        G4cout << "############################################################################"
+               << G4endl << G4endl;
+
+        if ( fPm->ParameterExists("Ch/AbortOnInconsistentReactionType") &&
+             fPm->GetBooleanParameter("Ch/AbortOnInconsistentReactionType") ) {
+            G4cerr << "TOPAS is exiting: Ch/AbortOnInconsistentReactionType is True and the"
+                   << " reaction table above is inconsistent." << G4endl;
+            fPm->AbortSession(1);
+        }
     }
 }
 
