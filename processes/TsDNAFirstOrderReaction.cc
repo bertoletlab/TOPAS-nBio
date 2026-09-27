@@ -178,18 +178,22 @@ G4VParticleChange* TsDNAFirstOrderReaction::PostStepDoIt(const G4Track& track,co
         for ( size_t u = 0; u < fpProductsMolecularConfiguration.size(); u++ ) {
             G4Molecule* product = new G4Molecule(fpProductsMolecularConfiguration[u]);
             G4DNADamage::Instance()->AddIndirectDamage("NULL",product,track.GetPosition(),track.GetGlobalTime());
-	    
-            //G4Track* productTrack = product->BuildTrack(track.GetGlobalTime(),track.GetPosition());
-	    
-            //productTrack->SetTrackStatus(fAlive);
-           
-	    //G4MoleculeFinder::Instance()->Push(productTrack);
 
-            //std::cout << " Created product from scavenging " << std::endl;
-            //if(G4VMoleculeCounter::InUse())
-            //    G4VMoleculeCounter::Instance()->AddAMoleculeAtTime(
-            //                                                   GetMolecule(productTrack)->GetMolecularConfiguration(),
-            //                                                  track.GetGlobalTime(),&(track.GetPosition()));
+            // Tell the molecule counter the product exists, so a G-value scorer can see it.
+            // Without this the scavenged product goes only into G4DNADamage, which is the DNA
+            // bookkeeping, and TsSBSGValue reports G(Product) = 0 at every time and every
+            // scavenging capacity. That makes the standard scavenger observable, how much of the
+            // radical the scavenger actually captured, unreadable from a chemistry-only run,
+            // which is precisely what a G against scavenging capacity validation needs.
+            //
+            // Deliberately NOT building a track for the product, which is what the code this
+            // replaces was reaching for: a track would be pushed to the molecule finder, then
+            // diffuse and react. The scavenger product is meant to be inert. Counting it costs
+            // nothing and changes no dynamics.
+            if ( G4VMoleculeCounter::Instance()->InUse() )
+                G4VMoleculeCounter::Instance()->AddAMoleculeAtTime(
+                    fpProductsMolecularConfiguration[u], track.GetGlobalTime(),
+                    &(track.GetPosition()));
         }
     }
     fParticleChange.ProposeTrackStatus(fStopAndKill);
