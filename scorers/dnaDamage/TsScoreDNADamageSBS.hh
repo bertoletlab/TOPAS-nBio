@@ -154,6 +154,15 @@ protected:
 	G4int fNumScavengedInBackbone;
 	G4int fNumScavengedInBase;
 	G4int fNumScavengedInHistone;
+	// The same attacks split by attacking species. A base accepts both the hydroxyl radical
+	// and the solvated electron, a backbone the hydroxyl only, so the all-species backbone
+	// share bb / (bb + base) is not the hydroxyl-only partition an accessibility anchor such
+	// as Michalik 1995 describes. Measured on the naked plasmid, a 1e8 /s hydroxyl scavenger
+	// cut backbone attacks 31-fold and base attacks only 1.3-fold: most base attacks are
+	// electron attacks. Invariants: BackboneOH == Backbone, BaseOH + BaseEaq == Base.
+	G4int fNumScavengedInBackboneOH;
+	G4int fNumScavengedInBaseOH;
+	G4int fNumScavengedInBaseEaq;
 	G4int fNumSSBPlus;
 	G4int fNumDSBPlus;
 	G4int fNumDSBComplex;
