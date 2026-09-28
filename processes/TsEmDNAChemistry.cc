@@ -898,10 +898,21 @@ void TsEmDNAChemistry::ConstructProcess()
             ph->RegisterProcess(brown, moleculeDef);
             
             for ( size_t u = 0; u < fScavengedMolecules.size(); u++ ) {
-                if ( moleculeDef->GetName() == fScavengedMolecules[u] ) {
+                // Match on the definition, not on its name. Geant4 11.3 renamed the radicals by
+                // prefixing a degree sign, so G4OH::Definition() is named "°OH" while its
+                // formatted name and every deck still say "OH". The old string comparison
+                // therefore never matched hydroxyl, the first-order reaction was never attached,
+                // and a BackgroundReaction scavenger removed nothing at all -- silently, because
+                // the parser has already printed "Set scavenging capacity for molecule OH" by
+                // this point. Measured before the fix: G(OH) at 1 us was 2.709 at every
+                // scavenging capacity from 1e5 to 3.2e6 /s, identical to four digits and
+                // identical to the unscavenged run, where 3.2e6 /s should have removed 96% of it.
+                // G4MoleculeTable still resolves the configuration by "OH", so the lookup below
+                // works and only the comparison was wrong.
+                G4MolecularConfiguration* mC = G4MoleculeTable::Instance()->GetConfiguration(fScavengedMolecules[u]);
+                if ( mC != nullptr && moleculeDef == mC->GetDefinition() ) {
                     TsDNAFirstOrderReaction* firstOrd = new TsDNAFirstOrderReaction();
-                    
-                    G4MolecularConfiguration* mC = G4MoleculeTable::Instance()->GetConfiguration(fScavengedMolecules[u]);
+
                     if ( !fScavengerHasProducts[u] )
                         firstOrd->SetReaction(mC, fScavengedCapacities[u]);
                     else {
