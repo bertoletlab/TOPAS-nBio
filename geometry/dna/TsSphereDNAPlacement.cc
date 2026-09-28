@@ -17,6 +17,8 @@
 
 #include "TsSphereDNAPlacement.hh"
 
+#include "G4Sphere.hh"
+
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -56,6 +58,30 @@ std::vector<G4ThreeVector> TsSegmentPathToBasePairs(
 		}
 	}
 	return out;
+}
+
+TsSphereDNAHydrationShellSolids TsBuildSphereDNAHydrationShellSolids(
+	G4double backboneRadius, G4double thickness, G4double phiSpan)
+{
+	// The wedges stay centred on 90 and 270 deg whatever the span, so narrowing the shell
+	// keeps it symmetric about the same axis rather than sliding it around the backbone.
+	// Solid names and argument arithmetic are TsNucleus::SetDNAVolumes's, unchanged.
+	TsSphereDNAHydrationShellSolids s;
+	s.shell1 = new G4Sphere("DNA_WaterLayer1",
+							backboneRadius,
+							backboneRadius+thickness,
+							90*deg - phiSpan/2.,
+							phiSpan,
+							0*deg,
+							180*deg);
+	s.shell2 = new G4Sphere("DNA_WaterLayer2",
+							backboneRadius,
+							backboneRadius+thickness,
+							270*deg - phiSpan/2.,
+							phiSpan,
+							0*deg,
+							180*deg);
+	return s;
 }
 
 std::vector<TsSphereDNABasePair> TsBuildSphereDNAPlacement(

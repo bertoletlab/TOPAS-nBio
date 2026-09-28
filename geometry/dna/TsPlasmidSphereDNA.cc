@@ -125,6 +125,40 @@ G4VPhysicalVolume* TsPlasmidSphereDNA::Construct()
 	G4LogicalVolume* lBack1 = CreateLogicalVolume("Backbone1", gBackbone);
 	G4LogicalVolume* lBack2 = CreateLogicalVolume("Backbone2", gBackbone);
 
+	// ---- the hydration shell, as TsNucleus builds it, off unless asked for -----------
+	// Quasi-direct damage is charge transfer from an ionised shell to the backbone, and the
+	// scorer can only see it where a volume named HydrationShell1 or HydrationShell2 exists;
+	// without the shell that channel is silently zero on a plasmid. The same parameter names as
+	// the nucleus, and the same wedges, from the shared builder. The nucleus defaults the shell
+	// on; this defaults it off so that every plasmid deck written before it existed builds the
+	// geometry it always built.
+	G4bool addHydrationShell = false;
+	if (fPm->ParameterExists(GetFullParmName("AddHydrationShell")))
+		addHydrationShell = fPm->GetBooleanParameter(GetFullParmName("AddHydrationShell"));
+	G4LogicalVolume* lShell1 = NULL;
+	G4LogicalVolume* lShell2 = NULL;
+	if (addHydrationShell)
+	{
+		G4double shellThickness = TsSphereDNADefaults::kHydrationShellThickness;
+		if (fPm->ParameterExists(GetFullParmName("HydrationShellThickness")))
+			shellThickness = fPm->GetDoubleParameter(GetFullParmName("HydrationShellThickness"),"Length");
+		G4double shellPhiSpan = TsSphereDNADefaults::kHydrationShellPhiSpan;
+		if (fPm->ParameterExists(GetFullParmName("HydrationShellPhiSpan")))
+			shellPhiSpan = fPm->GetDoubleParameter(GetFullParmName("HydrationShellPhiSpan"),"Angle");
+		if (shellPhiSpan <= 0. || shellPhiSpan > 180*deg)
+		{
+			G4cerr << "TOPAS is exiting due to a serious error in Geometry setup." << G4endl;
+			G4cerr << GetFullParmName("HydrationShellPhiSpan")
+				   << " must lie in (0, 180] deg, or the two wedges overlap each other."
+				   << G4endl;
+			fPm->AbortSession(true);
+		}
+		TsSphereDNAHydrationShellSolids gShell =
+			TsBuildSphereDNAHydrationShellSolids(backboneRadius, shellThickness, shellPhiSpan);
+		lShell1 = CreateLogicalVolume("HydrationShell1", gShell.shell1);
+		lShell2 = CreateLogicalVolume("HydrationShell2", gShell.shell2);
+	}
+
 	// ---- place them, using the nucleus's placement -----------------------------------
 	std::vector<G4ThreeVector> steps = TsSegmentPathToBasePairs(path);
 	std::vector<TsSphereDNABasePair> bps =
@@ -146,10 +180,22 @@ G4VPhysicalVolume* TsPlasmidSphereDNA::Construct()
 		CreatePhysicalVolume("Base2_", e.bpID, true, lBase2, rBase, pBase2, fEnvelopePhys);
 		CreatePhysicalVolume("Backbone1_", e.bpID, true, lBack1, rBack, pBack1, fEnvelopePhys);
 		CreatePhysicalVolume("Backbone2_", e.bpID, true, lBack2, rBack, pBack2, fEnvelopePhys);
+
+		if (addHydrationShell)
+		{
+			// on the backbone positions with the base's orientation, as the nucleus places it
+			G4ThreeVector* pShell1 = new G4ThreeVector(e.back1);
+			G4ThreeVector* pShell2 = new G4ThreeVector(e.back2);
+			G4RotationMatrix* rShell = new G4RotationMatrix(e.rotBase);
+			CreatePhysicalVolume("HydrationShell1_", e.bpID, true, lShell1, rShell, pShell1, fEnvelopePhys);
+			CreatePhysicalVolume("HydrationShell2_", e.bpID, true, lShell2, rShell, pShell2, fEnvelopePhys);
+		}
 	}
 
 	G4cout << G4endl << "Plasmid built with the nucleus sphere DNA model: "
-		   << fNumberOfBasePairs << " bp" << G4endl << G4endl;
+		   << fNumberOfBasePairs << " bp"
+		   << (addHydrationShell ? ", with hydration shell" : ", no hydration shell")
+		   << G4endl << G4endl;
 
 	InstantiateChildren(fEnvelopePhys);
 	return fEnvelopePhys;
