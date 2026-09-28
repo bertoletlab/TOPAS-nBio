@@ -20,6 +20,19 @@ always the honest statement of what we have altered.
 | `fix/plasmid-chromosome-contents` | `TsScoreDNADamageSBS.cc:49` hardcodes `fChromosomeContents = {1}` and nothing else assigns it, so every per-DNA yield on the plasmid path is wrong by the ratio of real plasmid content to one base pair. | yes, once written |
 | `feature/plasmid-sphere-hydration` | A supercoiled plasmid carrying the nucleus model's sphere volumes and a hydration shell, so an absolute anchor measured on naked plasmid can be reproduced in the geometry it was measured in. | probably not, lab-specific |
 
+## Upstream pull requests
+
+Each defect goes upstream as its own single-commit branch off `main`, named `pr/<slug>`, carrying
+none of the lab-only files. The stack on `blab/integration` stays the lab build. Bodies and the
+matching Discussion replies are drafted in `pr-drafts/`; the PI opens the pull request and posts
+the reply.
+
+| Branch | Commit | From | Status |
+|---|---|---|---|
+| `pr/g4-11.3-species-names` | `7fb5e3d` | `fix/g4-11.3-species-names` | prepared 2026-09-28; built clean on upstream `main`, nrtest 19/19; not opened. Answers Discussions #125, #126 (#96 related) |
+| `pr/background-scavenger-g4-11.3` | `216a55a` | `fix/background-scavenger-inert-on-g4-11.3` | prepared 2026-09-28; built clean, nrtest 19/19; not opened. Answers Discussion #79 |
+| `pr/nucleus-parameter-names` | `992f23d` | `fix/nucleus-parameter-names` | prepared 2026-09-28; built clean, nrtest 19/19; not opened. `TsNucleus.cc` is CRLF, so `git am` needs `--keep-cr` |
+
 ## Working rules
 
 - One branch per defect or feature, never a combined branch: each has to be separately
