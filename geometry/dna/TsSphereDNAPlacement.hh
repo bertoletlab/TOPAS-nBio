@@ -33,14 +33,18 @@
 
 #include <vector>
 
+class G4VSolid;
+
 // Where one base pair's volumes go. The two rotations differ: the base carries an extra
 // rotateZ so a non-spherical base is oriented within its own base-pair plane, which matters
 // because the sphere model's base is an ellipsoid, not a sphere, despite the model's name.
+// The hydration shell has no entry of its own: it sits at back1 and back2 and takes rotBase,
+// which is what TsNucleus always did and what any other component must do to match it.
 struct TsSphereDNABasePair
 {
 	G4int            bpID;
 	G4ThreeVector    base1, base2, back1, back2;
-	G4RotationMatrix rotBase;       // bases and, in the nucleus, the hydration shell
+	G4RotationMatrix rotBase;       // bases and the hydration shell
 	G4RotationMatrix rotBackbone;   // backbones
 };
 
@@ -53,7 +57,28 @@ namespace TsSphereDNADefaults
 	// radius. TsNucleus's base ellipsoid is 0.328 / 0.328 / 0.185 nm.
 	const G4double kBaseRadialExtent = 0.328 * CLHEP::nanometer;
 	const G4int    kBasePairsPerTurn = 10;
+	// the hydration shell: a spherical layer on the backbone's surface, cut to two wedges
+	const G4double kHydrationShellThickness = 0.16 * CLHEP::nanometer;
+	const G4double kHydrationShellPhiSpan   = 132  * CLHEP::degree;
 }
+
+// The two hydration-shell solids of the sphere model, one per strand. Each is a spherical
+// layer from the backbone's surface out to the shell thickness, cut to a wedge of phiSpan
+// centred on 90 deg (strand 1) or 270 deg (strand 2), so the two never meet for any span up
+// to 180 deg. Quasi-direct damage takes ANY ionisation in this volume, so its yield is set by
+// the labelled volume alone, and a component that builds the shell with different wedges would
+// carry a different quasi-direct channel under the same parameter names. One builder, so it
+// cannot.
+struct TsSphereDNAHydrationShellSolids
+{
+	G4VSolid* shell1;
+	G4VSolid* shell2;
+};
+
+TsSphereDNAHydrationShellSolids TsBuildSphereDNAHydrationShellSolids(
+	G4double backboneRadius,
+	G4double thickness = TsSphereDNADefaults::kHydrationShellThickness,
+	G4double phiSpan   = TsSphereDNADefaults::kHydrationShellPhiSpan);
 
 // Build the placement for every base pair along a path. The path is consumed pairwise, so the
 // result has one entry fewer than the path has points, exactly as both original loops did.

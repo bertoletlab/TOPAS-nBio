@@ -150,7 +150,7 @@ G4VPhysicalVolume* TsNucleus::Construct()
 	if (fPm->ParameterExists(GetFullParmName("AddHydrationShell")))
 	  fAddHydrationShell = fPm->GetBooleanParameter(GetFullParmName("AddHydrationShell"));
 
-	fHydrationShellThickness = 0.16*nm;
+	fHydrationShellThickness = TsSphereDNADefaults::kHydrationShellThickness;
 	// The existence check and the value read must name the SAME parameter. They did not: the
 	// read carried the member-variable prefix, so a deck setting the documented name
 	// HydrationShellThickness passed the check and then failed the lookup, taking the run down
@@ -596,10 +596,10 @@ void TsNucleus::SetDNAVolumes(G4bool BuildHalfCyl,
 		 // nm^3, chi2/dof 0.21). The span is a calibration parameter in all but name, and it
 		 // is one now, defaulting to the shipped 132 deg.
 		 //
-		 // The wedges stay centred on 90 and 270 deg whatever the span, so narrowing the shell
-		 // keeps it symmetric about the same axis rather than sliding it around the backbone.
+		 // The wedge solids themselves come from TsBuildSphereDNAHydrationShellSolids, shared
+		 // with TsPlasmidSphereDNA, so the plasmid's shell is this shell by construction.
 		 if (fAddHydrationShell){
-			G4double shellPhiSpan = 132*deg;
+			G4double shellPhiSpan = TsSphereDNADefaults::kHydrationShellPhiSpan;
 			if (fPm->ParameterExists(GetFullParmName("HydrationShellPhiSpan")))
 				shellPhiSpan = fPm->GetDoubleParameter(GetFullParmName("HydrationShellPhiSpan"),"Angle");
 			if (shellPhiSpan <= 0. || shellPhiSpan > 180*deg) {
@@ -610,22 +610,10 @@ void TsNucleus::SetDNAVolumes(G4bool BuildHalfCyl,
 				exit(1);
 			}
 
-			G4Sphere* gWater1 = new G4Sphere("DNA_WaterLayer1",
-														   backboneRadius,
-														   backboneRadius+fHydrationShellThickness,
-														   90*deg - shellPhiSpan/2.,
-														   shellPhiSpan,
-														   0*deg,
-														   180*deg);
-			G4Sphere* gWater2 = new G4Sphere("DNA_WaterLayer2",
-															backboneRadius,
-															backboneRadius+fHydrationShellThickness,
-															270*deg - shellPhiSpan/2.,
-															shellPhiSpan,
-															0*deg,
-															180*deg);
-			lHydrationShell1 = CreateLogicalVolume("HydrationShell1", gWater1);
-			lHydrationShell2 = CreateLogicalVolume("HydrationShell2", gWater2);
+			TsSphereDNAHydrationShellSolids gWater =
+				TsBuildSphereDNAHydrationShellSolids(backboneRadius, fHydrationShellThickness, shellPhiSpan);
+			lHydrationShell1 = CreateLogicalVolume("HydrationShell1", gWater.shell1);
+			lHydrationShell2 = CreateLogicalVolume("HydrationShell2", gWater.shell2);
 		 }
 	}
 	//half cylinder
