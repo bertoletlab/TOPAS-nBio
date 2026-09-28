@@ -40,6 +40,7 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 	// Initialize quantification of damage
 	fNumSB = 0; fNumSBDirect = 0; fNumSBQuasiDirect = 0; fNumSBIndirect = 0;
 	fNumScavengedInBackbone = 0; fNumScavengedInBase = 0; fNumScavengedInHistone = 0;
+	fNumScavengedInBackboneOH = 0; fNumScavengedInBaseOH = 0; fNumScavengedInBaseEaq = 0;
 	fNumSSB = 0; fNumSSBDirect = 0; fNumSSBQuasiDirect = 0; fNumSSBIndirect = 0;
 	fNumDSB = 0; fNumDSBDirect = 0; fNumDSBIndirect = 0; fNumDSBDirectIndirect = 0; fNumDSBDirectQuasiDirect = 0; fNumDSBQuasiDirectQuasiDirect = 0; fNumDSBIndirectQuasiDirect = 0;
 	fNumBaseDamage = 0; fNumBaseDamageDirect = 0; fNumBaseDamageQuasiDirect = 0; fNumBaseDamageIndirect = 0;
@@ -459,6 +460,15 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 		if (fFociSizes.size() >= 4) fNtuple->RegisterColumnI(&fNumFoci4, "Foci_" + std::to_string(int(fFociSizes[3]*1e6)) + "nm");
 		if (fFociSizes.size() >= 5) fNtuple->RegisterColumnI(&fNumFoci5, "Foci_" + std::to_string(int(fFociSizes[4]*1e6)) + "nm");
 	}
+	// The species-resolved attack counters are registered last, after every column that
+	// existed before them, so the positions of the existing columns do not move and a run
+	// with the same seed differs from one made before this only by these appended columns.
+	if (fScoreIndirectDamage)
+	{
+		fNtuple->RegisterColumnI(&fNumScavengedInBackboneOH, "Scavenged_Backbone_OH");
+		fNtuple->RegisterColumnI(&fNumScavengedInBaseOH, "Scavenged_Base_OH");
+		fNtuple->RegisterColumnI(&fNumScavengedInBaseEaq, "Scavenged_Base_eaq");
+	}
 	// Initialize and setup damage computer
 	fDamageCalculator = new TsDNADamageCalculator();
 	fDamageCalculator->SetDistanceBasePairsForDSB(fNumberOfBasePairsForDSB);
@@ -697,6 +707,8 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 				{
                     fTracksScavenged.push_back(aStep->GetTrack());
 					fNumScavengedInBase++;
+					if (isHydroxil) fNumScavengedInBaseOH++;
+					else fNumScavengedInBaseEaq++;
 					if (G4UniformRand() < fProbabilityOfDamageInBase)
 					{
 						hit->SetDamageType(indirect);
@@ -720,6 +732,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 				{
                     fTracksScavenged.push_back(aStep->GetTrack());
 					fNumScavengedInBackbone++;
+					fNumScavengedInBackboneOH++;   // this branch is hydroxyl-only
 					if (G4UniformRand() < fProbabilityOfDamageInBackbone)
 					{
 						hit->SetDamageType(indirect);
@@ -813,6 +826,14 @@ void TsScoreDNADamageSBS::UserHookForEndOfRun()
 		fScav << fCollectionsOfHits.size() << "," << fNumScavengedInBackbone << ","
 		      << fNumScavengedInBase << "," << fNumScavengedInHistone << G4endl;
 		fScav.close();
+		// The species split goes to a sibling file rather than to appended columns: the
+		// campaign's reducer unpacks the row above into exactly four fields, so a fifth
+		// column would break it, and the file above stays byte-identical to what it was.
+		std::ofstream fScavSp(fOutFileName + "_scavenged_species.csv");
+		fScavSp << "Events,Scavenged_Backbone_OH,Scavenged_Base_OH,Scavenged_Base_eaq" << G4endl;
+		fScavSp << fCollectionsOfHits.size() << "," << fNumScavengedInBackboneOH << ","
+		        << fNumScavengedInBaseOH << "," << fNumScavengedInBaseEaq << G4endl;
+		fScavSp.close();
 	}
     // Adding damage and primary count at the end
     fDamageCalculator->AddDamageAndPrimaryCount(numberOfLesions, fCollectionsOfHits.size());
@@ -932,6 +953,12 @@ void TsScoreDNADamageSBS::AbsorbResultsFromWorkerScorer(TsVScorer* workerScorer)
 	workerMTScorer->fNumScavengedInBackbone = 0;
 	workerMTScorer->fNumScavengedInBase     = 0;
 	workerMTScorer->fNumScavengedInHistone  = 0;
+	fNumScavengedInBackboneOH += workerMTScorer->fNumScavengedInBackboneOH;
+	fNumScavengedInBaseOH     += workerMTScorer->fNumScavengedInBaseOH;
+	fNumScavengedInBaseEaq    += workerMTScorer->fNumScavengedInBaseEaq;
+	workerMTScorer->fNumScavengedInBackboneOH = 0;
+	workerMTScorer->fNumScavengedInBaseOH     = 0;
+	workerMTScorer->fNumScavengedInBaseEaq    = 0;
 }
 
 // Default implementation (no more hierarchy levels, everything is chromosome 1)
