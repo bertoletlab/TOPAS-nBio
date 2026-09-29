@@ -20,6 +20,7 @@
 
 #include "TsDNAFirstOrderReaction.hh"
 #include "TsDNARemoveInMaterial.hh"
+#include "TsDNAMaxTimeStep.hh"
 
 #include "G4PhysicalConstants.hh"
 #include "G4SystemOfUnits.hh"
@@ -283,6 +284,19 @@ void TsEmDNAChemistry::DefineParameters()
 	}
 	
  
+    // Cap on the chemistry time step; see TsDNAMaxTimeStep.hh for why one is needed.
+    fMaxTimeStep = -1.;
+    if ( fPm->ParameterExists(GetFullParmName("MaximumTimeStep")) )
+        fMaxTimeStep = fPm->GetDoubleParameter(GetFullParmName("MaximumTimeStep"), "Time");
+    // With a volume prefix the cap applies inside the named volumes (grown by the margin) and
+    // the step outside is the time to diffuse to the nearest of them; see TsDNAMaxTimeStep.hh.
+    fMaxTimeStepVolumePrefix = "";
+    fMaxTimeStepMargin = 0.;
+    if ( fPm->ParameterExists(GetFullParmName("MaximumTimeStepVolumePrefix")) )
+        fMaxTimeStepVolumePrefix = fPm->GetStringParameter(GetFullParmName("MaximumTimeStepVolumePrefix"));
+    if ( fPm->ParameterExists(GetFullParmName("MaximumTimeStepMargin")) )
+        fMaxTimeStepMargin = fPm->GetDoubleParameter(GetFullParmName("MaximumTimeStepMargin"), "Length");
+
     fSetWaterConfiguration = false;
     if ( fPm->ParameterExists(GetFullParmName("SetWaterMolecularConfiguration")) )
         fSetWaterConfiguration = fPm->GetBooleanParameter(GetFullParmName("SetWaterMolecularConfiguration"));
@@ -1037,6 +1051,13 @@ void TsEmDNAChemistry::ConstructProcess()
 				}
 	    }
             
+            if ( fMaxTimeStep > 0. ) {
+                TsDNAMaxTimeStep* cap = new TsDNAMaxTimeStep();
+                cap->SetMaximumTimeStep(fMaxTimeStep);
+                cap->SetVolumePrefix(fMaxTimeStepVolumePrefix, fMaxTimeStepMargin);
+                moleculeDef->GetProcessManager()->AddDiscreteProcess(cap);
+            }
+
         } else if ( moleculeDef == G4H2O::Definition() ) {
             moleculeDef->GetProcessManager()
             ->AddRestProcess(new G4DNAElectronHoleRecombination(), 2);
