@@ -107,6 +107,9 @@ private:
     std::vector<std::vector<G4String>> fScavengerProducts;
 	std::vector<G4String> fRemoveInMaterialTheseMolecules;
 	G4String fRemoveInMaterial;
+	G4double fMaxTimeStep = -1.;
+	G4String fMaxTimeStepVolumePrefix;
+	G4double fMaxTimeStepMargin = 0.;
 };
 
 #endif
