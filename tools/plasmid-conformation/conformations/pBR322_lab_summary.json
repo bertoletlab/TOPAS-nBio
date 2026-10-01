@@ -1,0 +1,178 @@
+[
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 70.57864036498324,
+  "extent_xyz_nm": [
+   124.55512682488009,
+   209.89659863270143,
+   101.98725724264405
+  ],
+  "max_extent_nm": 209.89659863270143,
+  "writhe": -13.876029781867684,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5565677771778238,
+  "paired_fraction_2L_over_l": 0.9501011463250169,
+  "strand_distance_D_nm": 12.082997502346277,
+  "unpaired_runs_ge_30nm": 0,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_01.xyz",
+  "source": "pbr322_d8_s31.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 63.45396341062122,
+  "extent_xyz_nm": [
+   195.14432771059248,
+   129.23875696390252,
+   142.76464412848713
+  ],
+  "max_extent_nm": 195.14432771059248,
+  "writhe": -14.700292600094183,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5896289720413666,
+  "paired_fraction_2L_over_l": 0.9285232636547539,
+  "strand_distance_D_nm": 12.468347777757844,
+  "unpaired_runs_ge_30nm": 1,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_02.xyz",
+  "source": "pbr322_d8_s32.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 53.85222867028477,
+  "extent_xyz_nm": [
+   111.55063018261635,
+   128.55028937015973,
+   150.95197323595914
+  ],
+  "max_extent_nm": 150.95197323595914,
+  "writhe": -14.207183630118646,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5698503633442042,
+  "paired_fraction_2L_over_l": 0.9629130141604855,
+  "strand_distance_D_nm": 12.545224607073592,
+  "unpaired_runs_ge_30nm": 0,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_03.xyz",
+  "source": "pbr322_d8_s33.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 54.01637175036598,
+  "extent_xyz_nm": [
+   145.35003962485752,
+   75.06115807383244,
+   119.2426200264482
+  ],
+  "max_extent_nm": 145.35003962485752,
+  "writhe": -14.254897346139535,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5717641612593213,
+  "paired_fraction_2L_over_l": 0.968981793661497,
+  "strand_distance_D_nm": 11.919534161951077,
+  "unpaired_runs_ge_30nm": 0,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_04.xyz",
+  "source": "pbr322_d8_s34.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 73.18515856275633,
+  "extent_xyz_nm": [
+   147.98833604740804,
+   138.09246965292647,
+   163.4647307844088
+  ],
+  "max_extent_nm": 163.4647307844088,
+  "writhe": -14.095496498155617,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5653705906892581,
+  "paired_fraction_2L_over_l": 0.9022252191503709,
+  "strand_distance_D_nm": 11.345526444829645,
+  "unpaired_runs_ge_30nm": 2,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_05.xyz",
+  "source": "pbr322_d8_s35.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 64.81495798850969,
+  "extent_xyz_nm": [
+   129.4822502008815,
+   152.43659942891162,
+   148.1286011649858
+  ],
+  "max_extent_nm": 152.43659942891162,
+  "writhe": -14.727882431210647,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5907356006100993,
+  "paired_fraction_2L_over_l": 0.9763991908293999,
+  "strand_distance_D_nm": 11.96243668518788,
+  "unpaired_runs_ge_30nm": 0,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_06.xyz",
+  "source": "pbr322_d8_s36.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 54.645528801955486,
+  "extent_xyz_nm": [
+   93.63939335765127,
+   115.48257782646266,
+   163.9350800262895
+  ],
+  "max_extent_nm": 163.9350800262895,
+  "writhe": -13.613522613609842,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.546038610447335,
+  "paired_fraction_2L_over_l": 0.9581928523263655,
+  "strand_distance_D_nm": 12.421062884818788,
+  "unpaired_runs_ge_30nm": 0,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_07.xyz",
+  "source": "pbr322_d8_s37.xyz",
+  "fits_box": true
+ },
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 51.94375015652622,
+  "extent_xyz_nm": [
+   109.14980965262168,
+   106.66975049060811,
+   166.0168076134533
+  ],
+  "max_extent_nm": 166.0168076134533,
+  "writhe": -13.360612526895943,
+  "delta_lk": -24.93142857142857,
+  "wr_over_dlk": 0.5358943828115494,
+  "paired_fraction_2L_over_l": 0.9494268374915711,
+  "strand_distance_D_nm": 12.234519129187888,
+  "unpaired_runs_ge_30nm": 0,
+  "branches_estimate": 0,
+  "file": "pBR322_lab_08.xyz",
+  "source": "pbr322_d8_s38.xyz",
+  "fits_box": true
+ }
+]
