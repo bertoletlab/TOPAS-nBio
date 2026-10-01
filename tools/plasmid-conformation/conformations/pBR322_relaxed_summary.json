@@ -1,0 +1,24 @@
+[
+ {
+  "n_points": 1483,
+  "arc_length_nm": 1483.42,
+  "expected_arc_length_nm": 1483.42,
+  "rg_nm": 86.63535553312282,
+  "extent_xyz_nm": [
+   160.1593556432585,
+   195.92974737724523,
+   204.15654223900685
+  ],
+  "max_extent_nm": 204.15654223900685,
+  "writhe": 0.4651447925067109,
+  "delta_lk": 0.0,
+  "wr_over_dlk": null,
+  "paired_fraction_2L_over_l": 0.34457181389076197,
+  "strand_distance_D_nm": 21.733825299421163,
+  "unpaired_runs_ge_30nm": 8,
+  "branches_estimate": 6,
+  "file": "pBR322_relaxed_01.xyz",
+  "source": "pbr322_relaxed_s41.xyz",
+  "fits_box": true
+ }
+]
