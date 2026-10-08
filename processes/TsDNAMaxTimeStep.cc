@@ -36,6 +36,9 @@ void TsDNAMaxTimeStep::Create()
     fVolumePrefix = "";
     fMargin = 0.;
     fRegionsCollected = false;
+    fNearDNAMinStep = 0.;
+    fDNARadius = 0.;
+    fCell = 2.0 * CLHEP::nanometer;
 
     verboseLevel = 0;
 }
@@ -53,6 +56,8 @@ TsDNAMaxTimeStep::TsDNAMaxTimeStep(const TsDNAMaxTimeStep& rhs)
     fMaxTimeStep = rhs.fMaxTimeStep;
     fVolumePrefix = rhs.fVolumePrefix;
     fMargin = rhs.fMargin;
+    fNearDNAMinStep = rhs.fNearDNAMinStep;
+    fDNARadius = rhs.fDNARadius;
 }
 
 TsDNAMaxTimeStep::~TsDNAMaxTimeStep()
@@ -64,9 +69,38 @@ TsDNAMaxTimeStep& TsDNAMaxTimeStep::operator=(const TsDNAMaxTimeStep& rhs)
     fMaxTimeStep = rhs.fMaxTimeStep;
     fVolumePrefix = rhs.fVolumePrefix;
     fMargin = rhs.fMargin;
+    fNearDNAMinStep = rhs.fNearDNAMinStep;
+    fDNARadius = rhs.fDNARadius;
     fRegionsCollected = false;
     fRegions.clear();
+    fBasePairs.clear();
+    fGrid.clear();
     return *this;
+}
+
+long long TsDNAMaxTimeStep::CellKey(const G4ThreeVector& p, int dx, int dy, int dz) const
+{
+    const long long ix = (long long)std::floor(p.x() / fCell) + dx;
+    const long long iy = (long long)std::floor(p.y() / fCell) + dy;
+    const long long iz = (long long)std::floor(p.z() / fCell) + dz;
+    // 21 bits per axis, offset to keep them positive: +-1e6 cells of 2 nm is +-2 mm
+    return ((ix + 1048576LL) << 42) | ((iy + 1048576LL) << 21) | (iz + 1048576LL);
+}
+
+G4double TsDNAMaxTimeStep::DistanceSquaredToNearestBasePair(const G4ThreeVector& p) const
+{
+    G4double best = DBL_MAX;
+    for (int dx = -1; dx <= 1; dx++)
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dz = -1; dz <= 1; dz++) {
+                auto it = fGrid.find(CellKey(p, dx, dy, dz));
+                if (it == fGrid.end()) continue;
+                for (int idx : it->second) {
+                    const G4double d2 = (fBasePairs[idx] - p).mag2();
+                    if (d2 < best) best = d2;
+                }
+            }
+    return best;
 }
 
 void TsDNAMaxTimeStep::BuildPhysicsTable(const G4ParticleDefinition&)
@@ -117,12 +151,32 @@ void TsDNAMaxTimeStep::CollectRegions()
         r.radius = r.halfLengths.mag();
         r.isSphere = !pv->GetObjectRotationValue().isIdentity();
         fRegions.push_back(r);
+
+        // Base-pair positions for the near-DNA refinement: one daughter per base pair is
+        // enough, and Base1_ is placed by every DNA model at the base-pair's own frame.
+        if (fNearDNAMinStep > 0.) {
+            G4LogicalVolume* lv = pv->GetLogicalVolume();
+            const G4RotationMatrix rot = pv->GetObjectRotationValue();
+            const G4ThreeVector trans = pv->GetObjectTranslation();
+            for (size_t i = 0; i < lv->GetNoDaughters(); i++) {
+                G4VPhysicalVolume* d = lv->GetDaughter(i);
+                if (d->GetName().find("Base1_") == std::string::npos) continue;
+                fBasePairs.push_back(rot * d->GetObjectTranslation() + trans);
+            }
+        }
     }
+    for (size_t i = 0; i < fBasePairs.size(); i++)
+        fGrid[CellKey(fBasePairs[i])].push_back((int)i);
 
     G4cout << "-- TsDNAMaxTimeStep: cap " << G4BestUnit(fMaxTimeStep, "Time")
            << " inside " << fRegions.size() << " volume(s) named " << fVolumePrefix
            << "*, grown by " << G4BestUnit(fMargin, "Length")
            << "; outside, d^2 / (8 D) to the nearest of them." << G4endl;
+    if (fNearDNAMinStep > 0.)
+        G4cout << "-- TsDNAMaxTimeStep: near-DNA refinement, " << fBasePairs.size()
+               << " base-pair positions in a " << G4BestUnit(fCell, "Length") << " grid; a molecule "
+               << "within reach of one steps by (d - " << G4BestUnit(fDNARadius, "Length")
+               << ")^2 / (8 D), not below " << G4BestUnit(fNearDNAMinStep, "Time") << G4endl;
 }
 
 G4double TsDNAMaxTimeStep::DistanceToNearestRegion(const G4ThreeVector& p) const
@@ -157,10 +211,19 @@ G4double TsDNAMaxTimeStep::PostStepGetPhysicalInteractionLength(const G4Track& t
 
     G4double dt = fMaxTimeStep;
     if (!fRegions.empty()) {
-        G4double d = DistanceToNearestRegion(track.GetPosition()) - fMargin;
+        const G4ThreeVector& p = track.GetPosition();
+        G4double D = mol->GetDiffusionCoefficient();
+        G4double d = DistanceToNearestRegion(p) - fMargin;
         if (d > 0.) {
-            G4double D = mol->GetDiffusionCoefficient();
             if (D > 0.) dt = std::max(fMaxTimeStep, d * d / (8. * D));
+        } else if (fNearDNAMinStep > 0. && D > 0.) {
+            // inside an envelope: refine where a coarse step could reach a solid
+            const G4double d2 = DistanceSquaredToNearestBasePair(p);
+            if (d2 < DBL_MAX) {
+                const G4double gap = std::sqrt(d2) - fDNARadius;
+                if (gap <= 0.) dt = fNearDNAMinStep;
+                else dt = std::min(fMaxTimeStep, std::max(fNearDNAMinStep, gap * gap / (8. * D)));
+            }
         }
     }
 
