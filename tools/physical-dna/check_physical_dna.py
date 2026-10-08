@@ -120,7 +120,8 @@ def main():
     ap.add_argument("--sep", type=float, default=180.0)
     ap.add_argument("--samples", type=int, default=400)
     ap.add_argument("--neighbours", type=int, default=3)
-    ap.add_argument("--closed", action="store_true", default=True)
+    ap.add_argument("--open", dest="closed", action="store_false", default=True,
+                    help="the path is open (a nucleus fibre): no closure test, ends unpaired")
     args = ap.parse_args()
 
     slabs = load(args.dump)
@@ -147,6 +148,8 @@ def main():
     # 3: strand continuity across each interface, and base contacts
     for i in range(n):
         j = (i + 1) % n
+        if j == 0 and not args.closed:
+            break
         a, b = slabs[i], slabs[j]
         # strand-1 sector of slab i in the frame of slab j: angle of a's X seen from b
         ang = math.degrees(math.atan2(a["X"] @ b["Y"], a["X"] @ b["X"]))

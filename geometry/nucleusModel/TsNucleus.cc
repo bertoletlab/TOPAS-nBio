@@ -162,7 +162,7 @@ G4VPhysicalVolume* TsNucleus::Construct()
 	fDNAModel = "Sphere";
 	if (fPm->ParameterExists(GetFullParmName("DNAModel")))
 	  fDNAModel = fPm->GetStringParameter(GetFullParmName("DNAModel"));
-	if (!(fDNAModel=="HalfCylinder" || fDNAModel=="Sphere" || fDNAModel=="QuarterCylinder"))
+	if (!(fDNAModel=="HalfCylinder" || fDNAModel=="Sphere" || fDNAModel=="QuarterCylinder" || fDNAModel=="Physical"))
 	{
         G4cerr << "TOPAS is exiting due to a serious error in Geometry setup." << G4endl;
 		G4cerr << "Trying to build DNA with undefined value: " << fDNAModel << G4endl;
@@ -520,6 +520,7 @@ void TsNucleus::BuildDNA(vector<pair<G4ThreeVector, G4RotationMatrix*>> &Histone
 	G4bool BuildHalfCyl=false;
 	G4bool BuildQuartCyl=false;
 	G4bool BuildSphere=false;
+	G4bool BuildPhysical=false;
 
 	if (fDNAModel=="HalfCylinder")
 		BuildHalfCyl=true;
@@ -527,18 +528,103 @@ void TsNucleus::BuildDNA(vector<pair<G4ThreeVector, G4RotationMatrix*>> &Histone
 		BuildSphere=true;
 	else if (fDNAModel=="QuarterCylinder")
 		BuildQuartCyl=true;
+	else if (fDNAModel=="Physical")
+		BuildPhysical=true;   // builds its own solids per base pair; SetDNAVolumes has nothing to make
 
-	SetDNAVolumes(BuildHalfCyl, BuildQuartCyl, BuildSphere);
+	if (!BuildPhysical)
+		SetDNAVolumes(BuildHalfCyl, BuildQuartCyl, BuildSphere);
 
 	vector<G4ThreeVector> DNAPath;
 	GenerateDNAPath(HistoneDetails, DNAPath);
 	SegmentDNAPath(DNAPath);
 
-	if (BuildSphere){
+	if (BuildPhysical){
+		PlaceDNAPhysical(DNAPath);
+	} else if (BuildSphere){
 		PlaceDNASphere(DNAPath);
 	} else {
 		PlaceDNA(DNAPath);
 	}
+}
+
+// The physical DNA solids (TsPhysicalDNASolids) along the fibre path: mass-faithful slabs,
+// no overlaps, continuous strands. The fibre path is open and already sampled at one rise
+// per point by SegmentDNAPath; its bends are capped at PhysicalMaxBendPerBasePair (8 deg).
+// Volume names and copy numbers are those of the sphere model, so the scorer is unchanged.
+void TsNucleus::PlaceDNAPhysical(vector<G4ThreeVector> &newPath, G4VPhysicalVolume* physVol)
+{
+	TsPhysicalDNAParams p;
+	auto length = [&](const char* name, G4double& v) {
+		if (fPm->ParameterExists(GetFullParmName(name))) v = fPm->GetDoubleParameter(GetFullParmName(name), "Length"); };
+	auto angle = [&](const char* name, G4double& v) {
+		if (fPm->ParameterExists(GetFullParmName(name))) v = fPm->GetDoubleParameter(GetFullParmName(name), "Angle"); };
+	length("PhysicalBaseRadius", p.baseRadius);
+	length("PhysicalBackboneOuterRadius", p.backboneOuter);
+	length("PhysicalShellOuterRadius", p.shellOuter);
+	angle("PhysicalBackboneSpan", p.backboneSpan);
+	angle("PhysicalStrandSeparation", p.strandSeparation);
+	if (fPm->ParameterExists(GetFullParmName("PhysicalBasePairsPerTurn")))
+		p.basePairsPerTurn = fPm->GetUnitlessParameter(GetFullParmName("PhysicalBasePairsPerTurn"));
+	G4double maxBend = 8.0 * deg;
+	angle("PhysicalMaxBendPerBasePair", maxBend);
+	if (p.baseRadius <= 0 || p.backboneOuter <= p.baseRadius || p.shellOuter <= p.backboneOuter
+		|| p.backboneSpan <= 0 || p.backboneSpan > p.strandSeparation
+		|| p.strandSeparation + p.backboneSpan > CLHEP::twopi)
+	{
+		G4cerr << "TOPAS is exiting due to a serious error in Geometry setup." << G4endl;
+		G4cerr << GetFullParmName("Physical*") << ": radii must increase base < backbone < shell and the "
+			   << "two backbone sectors must not meet (span <= separation, separation + span <= 360 deg)" << G4endl;
+		exit(1);
+	}
+
+	G4double bendBefore = 0, bendAfter = 0;
+	std::vector<G4ThreeVector> steps = TsCapOpenPathBends(newPath, maxBend, bendBefore, bendAfter);
+	std::vector<TsPhysicalDNASolidSet> sets;
+	G4String error;
+	std::vector<TsPhysicalDNABasePair> bps = TsBuildPhysicalDNAPlacement(steps, p, false, sets, error);
+	if (!error.empty())
+	{
+		G4cerr << "TOPAS is exiting due to a serious error in Geometry setup." << G4endl;
+		G4cerr << "TsNucleus (Physical): " << error << G4endl;
+		exit(1);
+	}
+
+	G4String matBase1 = fAddBases ? fPm->GetStringParameter(GetFullParmName("Base1/Material")) : "";
+	G4String matBase2 = fAddBases ? fPm->GetStringParameter(GetFullParmName("Base2/Material")) : "";
+	G4String matBack1 = fAddBackbones ? fPm->GetStringParameter(GetFullParmName("Backbone1/Material")) : "";
+	G4String matBack2 = fAddBackbones ? fPm->GetStringParameter(GetFullParmName("Backbone2/Material")) : "";
+	G4String matShell1 = fAddHydrationShell ? fPm->GetStringParameter(GetFullParmName("HydrationShell1/Material")) : "";
+	G4String matShell2 = fAddHydrationShell ? fPm->GetStringParameter(GetFullParmName("HydrationShell2/Material")) : "";
+	G4LogicalVolume* mother = (physVol == NULL) ? fFiberLogic : physVol->GetLogicalVolume();
+
+	for (size_t i = 0; i < bps.size(); i++)
+	{
+		const TsPhysicalDNABasePair& e = bps[i];
+		const TsPhysicalDNASolidSet& s = sets[e.key];
+		fNumberOfBasePairs++;
+		G4RotationMatrix* rot = new G4RotationMatrix(e.active.inverse());
+		G4ThreeVector* pos = new G4ThreeVector(e.center);
+		if (fAddBases)
+		{
+			CreatePhysicalVolume("Base1_", e.bpID, true, CreateLogicalVolume("Base1", matBase1, s.base1), rot, pos, mother);
+			CreatePhysicalVolume("Base2_", e.bpID, true, CreateLogicalVolume("Base2", matBase2, s.base2), rot, pos, mother);
+		}
+		if (fAddBackbones)
+		{
+			CreatePhysicalVolume("Backbone1_", e.bpID, true, CreateLogicalVolume("Backbone1", matBack1, s.back1), rot, pos, mother);
+			CreatePhysicalVolume("Backbone2_", e.bpID, true, CreateLogicalVolume("Backbone2", matBack2, s.back2), rot, pos, mother);
+		}
+		if (fAddHydrationShell)
+		{
+			CreatePhysicalVolume("HydrationShell1_", e.bpID, true, CreateLogicalVolume("HydrationShell1", matShell1, s.shell1), rot, pos, mother);
+			CreatePhysicalVolume("HydrationShell2_", e.bpID, true, CreateLogicalVolume("HydrationShell2", matShell2, s.shell2), rot, pos, mother);
+		}
+	}
+	G4cout << G4endl << "Physical DNA solids BUILT in the fibre: " << bps.size() << " bp, largest bend "
+		   << bendBefore / deg << " deg before and " << bendAfter / deg << " deg after the cap, base radius "
+		   << p.baseRadius / nm << " nm, backbone to " << p.backboneOuter / nm << " nm, shell to "
+		   << p.shellOuter / nm << " nm" << G4endl << G4endl;
+	fFiberDNAContent = (G4double)bps.size();
 }
 
 

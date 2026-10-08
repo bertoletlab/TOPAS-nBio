@@ -13,6 +13,7 @@
 #define TsNucleus_hh
 
 #include "TsVGeometryComponent.hh"
+#include "TsPhysicalDNASolids.hh"
 #include "G4PVParameterised.hh"
 #include "TsVoxelParameterisation.hh"
 #include "G4NistManager.hh"
@@ -43,6 +44,7 @@ private:
 						 std::vector<G4ThreeVector> &path);
 	void SegmentDNAPath(std::vector<G4ThreeVector> &path);
 	void PlaceDNASphere(std::vector<G4ThreeVector> &path, G4VPhysicalVolume* vol = NULL);
+	void PlaceDNAPhysical(std::vector<G4ThreeVector> &path, G4VPhysicalVolume* vol = NULL);
 	void PlaceDNA(std::vector<G4ThreeVector> &path, G4VPhysicalVolume* vol = NULL);
 	G4double GetFiberDNAContent() {return fFiberDNAContent;}
 	void ApplyRotation(G4ThreeVector &Rotated,

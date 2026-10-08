@@ -90,6 +90,13 @@ std::vector<G4ThreeVector> TsSmoothResampleClosedPath(
 	const std::vector<G4ThreeVector>& controlPoints, G4double rise, G4double& scale,
 	G4double maxBend = 8.0 * CLHEP::degree);
 
+// Cap the bend of an OPEN path already sampled at one point per rise (the nucleus's fibre
+// path): interior points bending more than maxBend are relaxed toward their neighbours and
+// the path re-spaced uniformly between its fixed end points, repeated until the cap holds.
+// Returns the relaxed path (same point count) and reports the largest bend before and after.
+std::vector<G4ThreeVector> TsCapOpenPathBends(
+	const std::vector<G4ThreeVector>& path, G4double maxBend, G4double& bendBefore, G4double& bendAfter);
+
 // Build the placement for every base pair along a path already resampled to one point per
 // rise (TsSmoothResampleClosedPath for a closed path, TsSegmentPathToBasePairs for an open
 // one). For a closed path the last leg runs back to the first point; a closing gap shorter

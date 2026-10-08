@@ -11,6 +11,7 @@
 #include "TsPhysicalDNASolids.hh"
 
 #include "G4CutTubs.hh"
+#include "G4Tubs.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -157,6 +158,75 @@ std::vector<G4ThreeVector> TsSmoothResampleClosedPath(
 	return out;
 }
 
+namespace
+{
+	// n points uniformly spaced by arc length along an open polyline, end points kept
+	std::vector<G4ThreeVector> ResampleOpenUniform(const std::vector<G4ThreeVector>& curve, G4int n)
+	{
+		std::vector<G4ThreeVector> out;
+		const G4int nd = (G4int)curve.size();
+		G4double length = 0;
+		for (G4int i = 0; i + 1 < nd; i++)
+			length += (curve[i + 1] - curve[i]).mag();
+		const G4double step = length / (n - 1);
+		out.reserve(n);
+		G4double walked = 0;
+		G4int seg = 0;
+		G4double segLen = (curve[1] - curve[0]).mag();
+		for (G4int i = 0; i < n - 1; i++)
+		{
+			const G4double target = i * step;
+			while (walked + segLen < target && seg + 2 < nd)
+			{
+				walked += segLen;
+				seg++;
+				segLen = (curve[seg + 1] - curve[seg]).mag();
+			}
+			const G4double f = segLen > 0 ? (target - walked) / segLen : 0;
+			out.push_back(curve[seg] + f * (curve[seg + 1] - curve[seg]));
+		}
+		out.push_back(curve[nd - 1]);
+		return out;
+	}
+
+	G4double LargestOpenBend(const std::vector<G4ThreeVector>& pts)
+	{
+		G4double worst = 0;
+		for (size_t i = 1; i + 1 < pts.size(); i++)
+		{
+			const G4ThreeVector lin = (pts[i] - pts[i - 1]).unit();
+			const G4ThreeVector lout = (pts[i + 1] - pts[i]).unit();
+			worst = std::max(worst, std::acos(std::max(-1., std::min(1., lin.dot(lout)))));
+		}
+		return worst;
+	}
+}
+
+std::vector<G4ThreeVector> TsCapOpenPathBends(
+	const std::vector<G4ThreeVector>& path, G4double maxBend, G4double& bendBefore, G4double& bendAfter)
+{
+	std::vector<G4ThreeVector> out = path;
+	const G4int n = (G4int)out.size();
+	bendBefore = bendAfter = LargestOpenBend(out);
+	if (n < 3 || maxBend <= 0)
+		return out;
+	for (G4int round = 0; round < 500 && bendAfter > maxBend; round++)
+	{
+		std::vector<G4ThreeVector> relaxed = out;
+		for (G4int i = 1; i + 1 < n; i++)
+		{
+			const G4ThreeVector lin = (out[i] - out[i - 1]).unit();
+			const G4ThreeVector lout = (out[i + 1] - out[i]).unit();
+			const G4double bend = std::acos(std::max(-1., std::min(1., lin.dot(lout))));
+			if (bend > maxBend)
+				relaxed[i] = 0.5 * out[i] + 0.25 * (out[i - 1] + out[i + 1]);
+		}
+		out = ResampleOpenUniform(relaxed, n);
+		bendAfter = LargestOpenBend(out);
+	}
+	return out;
+}
+
 TsPhysicalDNASolidSet TsBuildPhysicalDNASolidSet(
 	const TsPhysicalDNAParams& p, G4double theta, G4double phiLocal, G4double dz, G4int key)
 {
@@ -177,18 +247,19 @@ TsPhysicalDNASolidSet TsBuildPhysicalDNASolidSet(
 	const G4double a1 = -span / 2.;                                // strand 1 centred on local +x
 	const G4double a2 = p.strandSeparation - span / 2.;            // strand 2
 
-	s.base1 = new G4CutTubs("DNA_base1" + suffix.str(), 0., p.baseRadius, dz,
-							-90. * CLHEP::degree, 180. * CLHEP::degree, lowNorm, highNorm);
-	s.base2 = new G4CutTubs("DNA_base2" + suffix.str(), 0., p.baseRadius, dz,
-							90. * CLHEP::degree, 180. * CLHEP::degree, lowNorm, highNorm);
-	s.back1 = new G4CutTubs("DNA_backbone1" + suffix.str(), p.baseRadius, p.backboneOuter, dz,
-							a1, span, lowNorm, highNorm);
-	s.back2 = new G4CutTubs("DNA_backbone2" + suffix.str(), p.baseRadius, p.backboneOuter, dz,
-							a2, span, lowNorm, highNorm);
-	s.shell1 = new G4CutTubs("DNA_shell1" + suffix.str(), p.backboneOuter, p.shellOuter, dz,
-							 a1, span, lowNorm, highNorm);
-	s.shell2 = new G4CutTubs("DNA_shell2" + suffix.str(), p.backboneOuter, p.shellOuter, dz,
-							 a2, span, lowNorm, highNorm);
+	// An unbent slab (the ends of an open path, or a straight run) has end faces perpendicular
+	// to its axis, which is a plain G4Tubs; G4CutTubs warns on such normals and asks for one.
+	auto tube = [&](const char* name, G4double rmin, G4double rmax, G4double sphi, G4double dphi) -> G4VSolid* {
+		if (theta < 1e-9)
+			return new G4Tubs(name + suffix.str(), rmin, rmax, dz, sphi, dphi);
+		return new G4CutTubs(name + suffix.str(), rmin, rmax, dz, sphi, dphi, lowNorm, highNorm);
+	};
+	s.base1  = tube("DNA_base1", 0., p.baseRadius, -90. * CLHEP::degree, 180. * CLHEP::degree);
+	s.base2  = tube("DNA_base2", 0., p.baseRadius, 90. * CLHEP::degree, 180. * CLHEP::degree);
+	s.back1  = tube("DNA_backbone1", p.baseRadius, p.backboneOuter, a1, span);
+	s.back2  = tube("DNA_backbone2", p.baseRadius, p.backboneOuter, a2, span);
+	s.shell1 = tube("DNA_shell1", p.backboneOuter, p.shellOuter, a1, span);
+	s.shell2 = tube("DNA_shell2", p.backboneOuter, p.shellOuter, a2, span);
 	return s;
 }
 
