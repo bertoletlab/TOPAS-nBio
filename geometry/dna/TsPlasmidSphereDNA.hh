@@ -12,6 +12,9 @@
 #define TsPlasmidSphereDNA_hh
 
 #include "TsVGeometryComponent.hh"
+#include "G4ThreeVector.hh"
+
+#include <vector>
 
 class TsPlasmidSphereDNA : public TsVGeometryComponent
 {
@@ -24,6 +27,11 @@ public:
 	G4VPhysicalVolume* Construct();
 
 private:
+	// The physical DNA model (TsPhysicalDNASolids): mass-faithful slabs, no overlaps,
+	// continuous strands. Selected by Ge/<name>/DNAModel = "Physical". The path arrives
+	// centred, closed and in Geant4 units.
+	G4VPhysicalVolume* ConstructPhysical(const std::vector<G4ThreeVector>& path);
+
 	G4int fNumberOfBasePairs;
 };
 

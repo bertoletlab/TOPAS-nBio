@@ -71,6 +71,10 @@ protected:
 	G4double fProbabilityOfScavengingInBase;
 	G4double fProbabilityOfDamageInBackbone;
 	G4double fProbabilityOfDamageInBase;
+	// chemical partition mode: one acceptance probability, moiety drawn from the chemistry
+	G4bool fIndirectPartitionChemical;
+	G4double fHydroxylBaseFraction;
+	G4double fProbabilityOfScavengingOnDNA;
 	G4bool fScavengeInHistones;
 
 	// For defining types of damage to be accounted for

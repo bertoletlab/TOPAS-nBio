@@ -176,6 +176,42 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 			fProbabilityOfDamageInBase = fPm->GetUnitlessParameter(GetFullParmName("ProbabilityOfIndirectDamageToBase"));
 	}
 
+	// How an indirect attack is assigned to a moiety. "Geometric" (default, the shipped rule):
+	// the solid a radical enters decides, base or backbone, each with its own scavenging
+	// probability. "Chemical": entering any DNA solid of a base pair is an encounter with that
+	// base pair, accepted with one probability (ProbabilityOfScavengingOnDNA); the moiety is
+	// then drawn from the chemical partition, hydroxyl to a base with HydroxylBaseFraction
+	// (Michalik 1995: 0.68) and otherwise to the backbone, the solvated electron always to a
+	// base. With continuous solids (TsPhysicalDNASolids) the backbone sectors enclose the
+	// bases except through the grooves, so the geometric rule would let the geometry set the
+	// partition the chemistry is known to set; this option keeps capture geometric and the
+	// partition chemical.
+	fIndirectPartitionChemical = false;
+	if (fPm->ParameterExists(GetFullParmName("IndirectPartitionMode")))
+	{
+		G4String mode = fPm->GetStringParameter(GetFullParmName("IndirectPartitionMode"));
+		if (mode == "Chemical") fIndirectPartitionChemical = true;
+		else if (mode != "Geometric")
+		{
+			G4cerr << GetFullParmName("IndirectPartitionMode") << " must be \"Geometric\" or \"Chemical\"" << G4endl;
+			fPm->AbortSession(1);
+		}
+	}
+	fHydroxylBaseFraction = 0.68;
+	if (fPm->ParameterExists(GetFullParmName("HydroxylBaseFraction")))
+		fHydroxylBaseFraction = fPm->GetUnitlessParameter(GetFullParmName("HydroxylBaseFraction"));
+	fProbabilityOfScavengingOnDNA = 1.0;
+	if (fPm->ParameterExists(GetFullParmName("ProbabilityOfScavengingOnDNA")))
+		fProbabilityOfScavengingOnDNA = fPm->GetUnitlessParameter(GetFullParmName("ProbabilityOfScavengingOnDNA"));
+	if (fIndirectPartitionChemical && (fPm->ParameterExists(GetFullParmName("ProbabilityOfScavengingInBackbone"))
+									   || fPm->ParameterExists(GetFullParmName("ProbabilityOfScavengingInBase"))))
+	{
+		G4cerr << GetFullParmName("IndirectPartitionMode") << " = Chemical takes one acceptance probability, "
+			   << GetFullParmName("ProbabilityOfScavengingOnDNA") << "; the per-moiety probabilities are "
+			   << "geometric-mode parameters and would be silently unused" << G4endl;
+		fPm->AbortSession(1);
+	}
+
 	fScavengeInHistones = true;
 	if (fPm->ParameterExists(GetFullParmName("ScavengeInHistones")))
 		fScavengeInHistones = fPm->GetBooleanParameter(GetFullParmName("ScavengeInHistones"));
@@ -390,6 +426,9 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 			G4cout << "Probability of scavenging in bases = 1.0; Probability of scavenging in backbones = 1.0" << G4endl;
 		else
 			G4cout << "Probability of scavenging in bases = " << fProbabilityOfScavengingInBase << "; Probability of scavenging in backbones = " << fProbabilityOfScavengingInBackbone << G4endl;
+		if (fIndirectPartitionChemical)
+			G4cout << "Indirect partition mode: Chemical. Probability of scavenging on DNA = " << fProbabilityOfScavengingOnDNA
+				   << "; hydroxyl base fraction = " << fHydroxylBaseFraction << " (solvated electron: bases only)" << G4endl;
 		G4cout << "Probability of base damage after scavenging = " << fProbabilityOfDamageInBase << "; Probability of strand break after scavenging = " << fProbabilityOfDamageInBackbone << G4endl;
 	}
 	G4cout << "*********************************************************************************" << G4endl;
@@ -693,6 +732,44 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
             	fTracksScavenged.push_back(aStep->GetTrack());
             	delete hit;
             	return false;
+			}
+			// Chemical partition: the encounter is with the base pair, the moiety is drawn.
+			else if (fIndirectPartitionChemical && (isHydroxil || isHydElectron)
+					 && (componentID == base || componentID == backbone) && enteringInNewVolume)
+			{
+				hit->SetEdep(-0.001 * eV);
+				if (G4UniformRand() < fProbabilityOfScavengingOnDNA)
+				{
+					fTracksScavenged.push_back(aStep->GetTrack());
+					const G4bool toBase = isHydElectron || (G4UniformRand() < fHydroxylBaseFraction);
+					if (toBase && fScoreOnBases)
+					{
+						fNumScavengedInBase++;
+						if (isHydroxil) fNumScavengedInBaseOH++;
+						else fNumScavengedInBaseEaq++;
+						hit->SetDNAComponentID(base);
+						if (G4UniformRand() < fProbabilityOfDamageInBase)
+						{
+							hit->SetDamageType(indirect);
+							fHits.push_back(hit);
+							return true;
+						}
+					}
+					else if (!toBase && fScoreOnBackbones)
+					{
+						fNumScavengedInBackbone++;
+						fNumScavengedInBackboneOH++;
+						hit->SetDNAComponentID(backbone);
+						if (G4UniformRand() < fProbabilityOfDamageInBackbone)
+						{
+							hit->SetDamageType(indirect);
+							fHits.push_back(hit);
+							return true;
+						}
+					}
+				}
+				delete hit;
+				return false;
 			}
 			// Makes damage to bases. OH and e_aq induce damage to bases. Only one step per species is considered (otherwise all would end up reacting), so we use the enteringInNewVolume flag
 			else if ((isHydroxil || isHydElectron) && componentID == base && enteringInNewVolume && fScoreOnBases)
