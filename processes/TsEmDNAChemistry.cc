@@ -296,6 +296,23 @@ void TsEmDNAChemistry::DefineParameters()
         fMaxTimeStepVolumePrefix = fPm->GetStringParameter(GetFullParmName("MaximumTimeStepVolumePrefix"));
     if ( fPm->ParameterExists(GetFullParmName("MaximumTimeStepMargin")) )
         fMaxTimeStepMargin = fPm->GetDoubleParameter(GetFullParmName("MaximumTimeStepMargin"), "Length");
+    // Refinement near the DNA solids: within the named volumes a molecule closer to a base pair
+    // than a coarse step could carry it steps by (d - radius)^2 / (8 D), never below the
+    // minimum; see TsDNAMaxTimeStep.hh. Needs the volume prefix, since the base-pair positions
+    // are read from those volumes' daughters.
+    fMinTimeStepNearDNA = -1.;
+    fNearDNARadius = 1.5 * nm;
+    if ( fPm->ParameterExists(GetFullParmName("MinimumTimeStepNearDNA")) )
+        fMinTimeStepNearDNA = fPm->GetDoubleParameter(GetFullParmName("MinimumTimeStepNearDNA"), "Time");
+    if ( fPm->ParameterExists(GetFullParmName("NearDNARadius")) )
+        fNearDNARadius = fPm->GetDoubleParameter(GetFullParmName("NearDNARadius"), "Length");
+    if ( fMinTimeStepNearDNA > 0. && (fMaxTimeStep <= 0. || fMaxTimeStepVolumePrefix.empty()) ) {
+        G4cerr << "TOPAS is exiting due to a serious error in the chemistry setup." << G4endl;
+        G4cerr << GetFullParmName("MinimumTimeStepNearDNA") << " needs both "
+               << GetFullParmName("MaximumTimeStep") << " and "
+               << GetFullParmName("MaximumTimeStepVolumePrefix") << G4endl;
+        fPm->AbortSession(1);
+    }
 
     fSetWaterConfiguration = false;
     if ( fPm->ParameterExists(GetFullParmName("SetWaterMolecularConfiguration")) )
@@ -1055,6 +1072,8 @@ void TsEmDNAChemistry::ConstructProcess()
                 TsDNAMaxTimeStep* cap = new TsDNAMaxTimeStep();
                 cap->SetMaximumTimeStep(fMaxTimeStep);
                 cap->SetVolumePrefix(fMaxTimeStepVolumePrefix, fMaxTimeStepMargin);
+                if ( fMinTimeStepNearDNA > 0. )
+                    cap->SetNearDNA(fMinTimeStepNearDNA, fNearDNARadius);
                 moleculeDef->GetProcessManager()->AddDiscreteProcess(cap);
             }
 

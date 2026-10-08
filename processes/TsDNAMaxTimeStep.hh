@@ -31,6 +31,7 @@
 #include "G4VITProcess.hh"
 #include "G4ThreeVector.hh"
 #include <vector>
+#include <unordered_map>
 
 class TsDNAMaxTimeStep : public G4VITProcess
 {
@@ -48,6 +49,15 @@ public:
     void SetMaximumTimeStep(G4double maxTimeStep) { fMaxTimeStep = maxTimeStep; }
     // Empty prefix (the default) means the cap applies everywhere.
     void SetVolumePrefix(const G4String& prefix, G4double margin) { fVolumePrefix = prefix; fMargin = margin; }
+    // Refinement near the DNA solids. Within the named envelopes the base-pair positions are
+    // collected (the daughter named Base1_ of each base pair, in world coordinates) into a
+    // grid, and a molecule whose coarse step could reach a base pair steps by
+    // max(minStep, (d - dnaRadius)^2 / (8 D)) instead of the cap, so the walk is fine only
+    // where a coarse step could have crossed a solid unseen. Measured on the sphere model at a
+    // 0.1 ns cap, hydroxyl attacks at 1e9 /s rose 1.66-fold when the cap was lowered to 0.01 ns
+    // everywhere, at seven times the wall time; this spends the fine steps where they count.
+    // Off unless minStep > 0.
+    void SetNearDNA(G4double minStep, G4double dnaRadius) { fNearDNAMinStep = minStep; fDNARadius = dnaRadius; }
 
     virtual void BuildPhysicsTable(const G4ParticleDefinition&);
 
@@ -77,6 +87,9 @@ protected:
 
     void CollectRegions();
     G4double DistanceToNearestRegion(const G4ThreeVector& p) const;
+    // squared distance to the nearest collected base-pair position, or DBL_MAX when none lies
+    // within the grid's reach (one cell in every direction)
+    G4double DistanceSquaredToNearestBasePair(const G4ThreeVector& p) const;
 
     G4ParticleChange fParticleChange;
 
@@ -87,6 +100,13 @@ private:
     G4double fMargin;
     G4bool fRegionsCollected;
     std::vector<Region> fRegions;
+
+    G4double fNearDNAMinStep;     // 0 = off
+    G4double fDNARadius;
+    G4double fCell;               // grid cell size; the search reaches one cell each way
+    std::vector<G4ThreeVector> fBasePairs;
+    std::unordered_map<long long, std::vector<int>> fGrid;
+    long long CellKey(const G4ThreeVector& p, int dx = 0, int dy = 0, int dz = 0) const;
 };
 
 #endif

@@ -110,6 +110,8 @@ private:
 	G4double fMaxTimeStep = -1.;
 	G4String fMaxTimeStepVolumePrefix;
 	G4double fMaxTimeStepMargin = 0.;
+	G4double fMinTimeStepNearDNA = -1.;   // refinement of the cap near the DNA solids; off if <= 0
+	G4double fNearDNARadius = 0.;
 };
 
 #endif
