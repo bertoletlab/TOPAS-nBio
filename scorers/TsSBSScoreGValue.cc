@@ -28,6 +28,14 @@ fPm(pM), fEnergyDepositPerEvent(0), fSumEnergy(0), fSumEnergy2(0)
     if ( G4Threading::IsWorkerThread() )  {
         G4VMoleculeCounter::Instance()->Use(true);
         G4MoleculeCounter::Instance()->DontRegister(G4H2O::Definition());
+        // The counter aborts the run (G4Exception TIME_DONT_MATCH) when a molecule is removed at a
+        // time that differs from the scheduler's, which happens whenever another scorer kills a
+        // molecule from its own hook: the DNA-damage scorers remove a radical captured by DNA at
+        // the step time, one chemistry step behind the global time. Opting out keeps the counter
+        // usable beside those scorers; the mismatch is one step, far below any record time.
+        if (fPm->ParameterExists(GetFullParmName("TolerateCounterTimeMismatch")) &&
+            fPm->GetBooleanParameter(GetFullParmName("TolerateCounterTimeMismatch")))
+            G4MoleculeCounter::Instance()->CheckTimeForConsistency(false);
     } else {
         G4DNAChemistryManager::Instance()->ResetCounterWhenRunEnds(false);
     }
