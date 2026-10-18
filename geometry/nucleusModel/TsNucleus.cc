@@ -63,6 +63,23 @@
 
 using namespace std;
 
+// An orientation drawn uniformly over SO(3): z-y-z Euler angles with alpha and gamma uniform in
+// [0, 2pi) and cos(beta) uniform in [-1, 1]. Drawing all three angles uniformly in [0, 2pi), as
+// both rotation sites did before, over-samples some orientations; the per-run site also applied
+// rotateX three times, so it only ever turned the nucleus about X. Three G4UniformRand calls, as
+// before, so the length of the random sequence is unchanged.
+static G4RotationMatrix* UniformRandomRotation()
+{
+	G4RotationMatrix* rotation = new G4RotationMatrix();
+	G4double alpha = G4UniformRand() * 2 * CLHEP::pi;
+	G4double beta = std::acos(1. - 2. * G4UniformRand());
+	G4double gamma = G4UniformRand() * 2 * CLHEP::pi;
+	rotation->rotateZ(alpha);
+	rotation->rotateY(beta);
+	rotation->rotateZ(gamma);
+	return rotation;
+}
+
 TsNucleus::TsNucleus(TsParameterManager* pM, TsExtensionManager* eM, TsMaterialManager* mM, TsGeometryManager* gM,
 			 TsVGeometryComponent* parentComponent, G4VPhysicalVolume* parentVolume, G4String& name) :
 TsVGeometryComponent(pM, eM, mM, gM, parentComponent, parentVolume, name)
@@ -343,15 +360,8 @@ G4VPhysicalVolume* TsNucleus::Construct()
 
 	if (fRotateNucleusForEachRun)
 	{
-		// Generate random numbers to rotate the nucleus for each run
-		G4RotationMatrix* newRotation = new G4RotationMatrix();
-		G4double rotX = G4UniformRand() * 2 * CLHEP::pi;
-		G4double rotY = G4UniformRand() * 2 * CLHEP::pi;
-		G4double rotZ = G4UniformRand() * 2 * CLHEP::pi;
-		newRotation->rotateX(rotX);
-		newRotation->rotateY(rotY);
-		newRotation->rotateZ(rotZ);
-		fEnvelopePhys->SetRotation(newRotation);
+		// Rotate the nucleus to a uniformly random orientation for each run
+		fEnvelopePhys->SetRotation(UniformRandomRotation());
 	}
 	return fEnvelopePhys;
 }
@@ -1180,14 +1190,7 @@ void TsNucleus::UpdateForNewRun(G4bool force = true)
 	if (fRotateNucleusForEachRun)
 	{
 		G4cout << "TsVGeometryComponent::UpdateForNewRun called for component: " << GetNameWithCopyId() << " - nucleus rotated." << G4endl;
-		// Generate random numbers to rotate the nucleus for each run
-		G4RotationMatrix* newRotation = new G4RotationMatrix();
-		G4double rotX = G4UniformRand() * 2 * CLHEP::pi;
-		G4double rotY = G4UniformRand() * 2 * CLHEP::pi;
-		G4double rotZ = G4UniformRand() * 2 * CLHEP::pi;
-		newRotation->rotateX(rotX);
-		newRotation->rotateX(rotY);
-		newRotation->rotateX(rotZ);
-		fEnvelopePhys->SetRotation(newRotation);
+		// Rotate the nucleus to a uniformly random orientation for each run
+		fEnvelopePhys->SetRotation(UniformRandomRotation());
 	}
 }
