@@ -598,6 +598,13 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     //            EXCITATIONS                               //
     //////////////////////////////////////////////////////////
     G4DNAWaterExcitationStructure waterExcitation;
+    // The relaxation channels carry no energy here, unlike G4ChemDissociationChannels. The
+    // excitation models already deposited the excitation energy in the physical stage, and
+    // G4DNAMolecularDissociation deposits a channel's energy again when the molecule decays.
+    // Geant4 never scores that second deposit, but TsChemTrackingManager::AppendStep sends
+    // every molecule step to the sensitive detectors, so with step-by-step chemistry the
+    // energy and dose scorers counted it twice (about 2.4 percent of the dose to a nucleus
+    // from 90 kV X-ray electrons at 40 ns). Nothing else reads the channel energy.
     //--------------------------------------------------------
     //---------------Excitation on the fifth layer------------
     
@@ -605,7 +612,7 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     decCh2 = new G4MolecularDissociationChannel("A^1B_1_DissociativeDecay");
     
     //Decay 1 : Energy
-    decCh1->SetEnergy(waterExcitation.ExcitationEnergy(0));
+    // no SetEnergy(waterExcitation.ExcitationEnergy(0)): see the note above EXCITATIONS
     decCh1->SetProbability(fA1B1Relaxation);
     decCh1->SetDisplacementType(TsDNAWaterDissociationDisplacer::NoDisplacement);
     
@@ -631,7 +638,7 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     decCh5 = new G4MolecularDissociationChannel("B^1A_1_DissociativeDecay2");
     
     //Decay 1 : energy
-    decCh1->SetEnergy(waterExcitation.ExcitationEnergy(1));
+    // no SetEnergy(waterExcitation.ExcitationEnergy(1)): see the note above EXCITATIONS
     decCh1->SetProbability(fB1A1Relaxation);
     
     //Decay 2 : 2OH + H_2
@@ -686,7 +693,7 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     decCh1->SetDisplacementType(TsDNAWaterDissociationDisplacer::AutoIonisation);
     
     //Decay channel 2 : energy
-    decCh2->SetEnergy(waterExcitation.ExcitationEnergy(2));
+    // no SetEnergy(waterExcitation.ExcitationEnergy(2)): see the note above EXCITATIONS
     decCh2->SetProbability(fRydDiffRelaxation);
     
     //Electronic configuration of this decay
@@ -713,7 +720,7 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     decCh1->SetDisplacementType(TsDNAWaterDissociationDisplacer::AutoIonisation);
     
     //Decay channel 2 : energy
-    decCh2->SetEnergy(waterExcitation.ExcitationEnergy(3));
+    // no SetEnergy(waterExcitation.ExcitationEnergy(3)): see the note above EXCITATIONS
     decCh2->SetProbability(fRydDiffRelaxation);
     
     *occ = *(water->GetGroundStateElectronOccupancy());
@@ -741,7 +748,7 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     decCh1->SetDisplacementType(TsDNAWaterDissociationDisplacer::AutoIonisation);
     
     //Decay channel 2 : energy
-    decCh2->SetEnergy(waterExcitation.ExcitationEnergy(4));
+    // no SetEnergy(waterExcitation.ExcitationEnergy(4)): see the note above EXCITATIONS
     decCh2->SetProbability(fRydDiffRelaxation);
     
     water->NewConfigurationWithElectronOccupancy("Excitation1stLayer", *occ);
