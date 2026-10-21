@@ -16,6 +16,8 @@
 
 #include "TsVNtupleScorer.hh"
 
+#include <fstream>
+
 #include "TsDNADamageCalculator.hh"
 #include "TsHitInDNA.hh"
 #include "TsFociAnalysis.hh"
@@ -98,6 +100,8 @@ protected:
 
 	// Options for the output
 	G4bool fWriteCSVWithExtensiveDamage;
+	G4bool fWriteHitTimes;
+	std::ofstream fHitTimesFile;
 	G4bool fScoreDirectDamage;
 	G4bool fScoreIndirectDamage;
 	G4bool fScoreQuasiDirectDamage;
