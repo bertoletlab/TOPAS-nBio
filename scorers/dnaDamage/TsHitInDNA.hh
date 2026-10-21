@@ -33,6 +33,8 @@ public:
 	inline G4int GetChromosomeID()					{ return fChromosomeID; }
 	inline G4int GetBasePairID()					{ return fBasePairID; }
 	inline G4int GetDamageType()					{ return fDamageType; }
+	inline G4double GetLocalTime()					{ return fLocalTime; }
+	inline G4double GetGlobalTime()					{ return fGlobalTime; }
 
 	// Set methods
 	inline void SetEventID(G4int id)						{ fEventID = id; }
@@ -46,6 +48,7 @@ public:
 	inline void SetChromosomeID(G4int chid)					{ fChromosomeID = chid; }
 	inline void SetBasePairID(G4int bpid)					{ fBasePairID = bpid; }
 	inline void SetDamageType(G4int d)						{ fDamageType = d; }
+	inline void SetTimes(G4double local, G4double global)	{ fLocalTime = local; fGlobalTime = global; }
 
 private:
 	G4int fEventID;
@@ -63,6 +66,9 @@ private:
 	G4int fBasePairID;
 
 	G4int fDamageType;
+
+	G4double fLocalTime;
+	G4double fGlobalTime;
 };
 
 #endif

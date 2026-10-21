@@ -28,6 +28,9 @@ TsHitInDNA::TsHitInDNA()
 	fBasePairID = -1;
 
 	fDamageType = -1;
+
+	fLocalTime = 0.;
+	fGlobalTime = 0.;
 }
 
 TsHitInDNA::~TsHitInDNA() {}

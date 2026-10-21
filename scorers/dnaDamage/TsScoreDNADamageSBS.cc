@@ -327,6 +327,12 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 		fStopAtDose = fPm->GetDoubleParameter(GetFullParmName("StopTrackingAtDose"), "Dose") / gray;
 
 	// Options for the output
+	// Diagnostic: one row per hit handed to the damage calculator, with the step's local and
+	// global times, so the response to an added first-order scavenger can be computed offline
+	// by removing each indirect hit with probability 1 - exp(-dS t_local). Off by default.
+	fWriteHitTimes = false;
+	if (fPm->ParameterExists(GetFullParmName("WriteHitTimes")))
+		fWriteHitTimes = fPm->GetBooleanParameter(GetFullParmName("WriteHitTimes"));
 	fWriteCSVWithExtensiveDamage = false;
 	if (fPm->ParameterExists(GetFullParmName("WriteCSVOutputWithAllDamageSpecification")))
 		fWriteCSVWithExtensiveDamage = fPm->GetBooleanParameter(GetFullParmName("WriteCSVOutputWithAllDamageSpecification"));
@@ -702,6 +708,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		// Default options
 		hit->SetChromosomeID(1);
 		hit->SetBasePairID(hierarchicalIDs[0]);
+		hit->SetTimes(aStep->GetPreStepPoint()->GetLocalTime(), aStep->GetPreStepPoint()->GetGlobalTime());
 
 		// Adds direct damage
 		if (trackID >= 0 && edep > 0 && fScoreDirectDamage && ((componentID == base && fScoreOnBases) || (componentID == backbone && fScoreOnBackbones)))
@@ -894,6 +901,11 @@ void TsScoreDNADamageSBS::UserHookForEndOfRun()
 	// Print info
 	G4cout << "--------------------" << G4endl;
 	G4cout << "Number of events comprised in Run: " << fCollectionsOfHits.size() << G4endl;
+	if (fWriteHitTimes)
+	{
+		fHitTimesFile.open(fOutFileName + "_hits.csv");
+		fHitTimesFile << "event,chromosome,basepair,strand,component,type,edep_eV,t_local_ps,t_global_ps" << G4endl;
+	}
 	G4int numberOfLesions = 0;
 	for (unsigned int i = 0; i < fCollectionsOfHits.size(); i++)
 	{
@@ -933,6 +945,7 @@ void TsScoreDNADamageSBS::UserHookForEndOfRun()
 		if (fGet2DFociImage) fFociAnalyzer->Produce2DImages(fDSBPositionsInRun);
 	}
 	G4cout << "Number of lesions in Run: " << numberOfLesions << G4endl;
+	if (fWriteHitTimes) fHitTimesFile.close();
 	fCollectionsOfHits.clear();
 	fEventsEdep.clear();
 }
@@ -953,6 +966,12 @@ G4int TsScoreDNADamageSBS::Analyze(std::vector<TsHitInDNA*> hits, G4int eventID)
         fDoseInThisExposure += fDoseInThisEvent;
     }
     G4int numberOfLesions = 0;
+	if (fWriteHitTimes)
+		for (unsigned int i = 0; i < hits.size(); i++)
+			fHitTimesFile << eventID << "," << hits[i]->GetChromosomeID() << "," << hits[i]->GetBasePairID() << ","
+			              << hits[i]->GetStrandNumber() << "," << hits[i]->GetDNAComponentID() << ","
+			              << hits[i]->GetDamageType() << "," << hits[i]->GetEdep() / eV << ","
+			              << hits[i]->GetLocalTime() / picosecond << "," << hits[i]->GetGlobalTime() / picosecond << "\n";
 	fDamageCalculator->ComputeStrandBreaks(hits);
     std::map<G4int, std::vector<G4int>> initialPosDamageSites = fDamageCalculator->GetDamageSites();
     numberOfLesions = fDamageCalculator->OutputSDDFile(initialPosDamageSites, eventID, fExposureID, fChromosomeContents);
