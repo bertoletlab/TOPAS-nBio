@@ -668,6 +668,9 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		}
 	}
 
+	if (fWriteHitTimes && fTrackSteps[trackID] == 1)
+		fTrackBirthComponent[trackID] = materialMatched ? GetDNAComponentAndStrandID(touchable).first : -3;
+
 	// Goes on only if DNA materials has been matched
 	if (materialMatched)
 	{
@@ -709,6 +712,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		hit->SetChromosomeID(1);
 		hit->SetBasePairID(hierarchicalIDs[0]);
 		hit->SetTimes(aStep->GetPreStepPoint()->GetLocalTime(), aStep->GetPreStepPoint()->GetGlobalTime());
+		if (fWriteHitTimes && fTrackBirthComponent.count(trackID)) hit->SetBirthComponent(fTrackBirthComponent[trackID]);
 
 		// Adds direct damage
 		if (trackID >= 0 && edep > 0 && fScoreDirectDamage && ((componentID == base && fScoreOnBases) || (componentID == backbone && fScoreOnBackbones)))
@@ -890,6 +894,7 @@ void TsScoreDNADamageSBS::AccumulateEvent()
 	// the kill in ProcessHits, attacking the volume it was born in
 	fTrackSteps.clear();
 	fTrackLastVolume.clear();
+	fTrackBirthComponent.clear();
 	G4double edep = fEdep;
 	fEventsEdep.push_back(edep);
 	fEdep = 0.;
@@ -904,7 +909,7 @@ void TsScoreDNADamageSBS::UserHookForEndOfRun()
 	if (fWriteHitTimes)
 	{
 		fHitTimesFile.open(fOutFileName + "_hits.csv");
-		fHitTimesFile << "event,chromosome,basepair,strand,component,type,edep_eV,t_local_ps,t_global_ps" << G4endl;
+		fHitTimesFile << "event,chromosome,basepair,strand,component,type,edep_eV,t_local_ps,t_global_ps,birth_component" << G4endl;
 	}
 	G4int numberOfLesions = 0;
 	for (unsigned int i = 0; i < fCollectionsOfHits.size(); i++)
@@ -971,7 +976,8 @@ G4int TsScoreDNADamageSBS::Analyze(std::vector<TsHitInDNA*> hits, G4int eventID)
 			fHitTimesFile << eventID << "," << hits[i]->GetChromosomeID() << "," << hits[i]->GetBasePairID() << ","
 			              << hits[i]->GetStrandNumber() << "," << hits[i]->GetDNAComponentID() << ","
 			              << hits[i]->GetDamageType() << "," << hits[i]->GetEdep() / eV << ","
-			              << hits[i]->GetLocalTime() / picosecond << "," << hits[i]->GetGlobalTime() / picosecond << "\n";
+			              << hits[i]->GetLocalTime() / picosecond << "," << hits[i]->GetGlobalTime() / picosecond << ","
+			              << hits[i]->GetBirthComponent() << "\n";
 	fDamageCalculator->ComputeStrandBreaks(hits);
     std::map<G4int, std::vector<G4int>> initialPosDamageSites = fDamageCalculator->GetDamageSites();
     numberOfLesions = fDamageCalculator->OutputSDDFile(initialPosDamageSites, eventID, fExposureID, fChromosomeContents);

@@ -35,6 +35,7 @@ public:
 	inline G4int GetDamageType()					{ return fDamageType; }
 	inline G4double GetLocalTime()					{ return fLocalTime; }
 	inline G4double GetGlobalTime()					{ return fGlobalTime; }
+	inline G4int GetBirthComponent()				{ return fBirthComponent; }
 
 	// Set methods
 	inline void SetEventID(G4int id)						{ fEventID = id; }
@@ -49,6 +50,7 @@ public:
 	inline void SetBasePairID(G4int bpid)					{ fBasePairID = bpid; }
 	inline void SetDamageType(G4int d)						{ fDamageType = d; }
 	inline void SetTimes(G4double local, G4double global)	{ fLocalTime = local; fGlobalTime = global; }
+	inline void SetBirthComponent(G4int c)					{ fBirthComponent = c; }
 
 private:
 	G4int fEventID;
@@ -69,6 +71,7 @@ private:
 
 	G4double fLocalTime;
 	G4double fGlobalTime;
+	G4int fBirthComponent;
 };
 
 #endif

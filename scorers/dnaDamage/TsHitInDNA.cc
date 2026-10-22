@@ -31,6 +31,7 @@ TsHitInDNA::TsHitInDNA()
 
 	fLocalTime = 0.;
 	fGlobalTime = 0.;
+	fBirthComponent = -9;
 }
 
 TsHitInDNA::~TsHitInDNA() {}

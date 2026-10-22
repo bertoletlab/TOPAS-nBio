@@ -103,6 +103,8 @@ protected:
 	G4bool fWriteCSVWithExtensiveDamage;
 	G4bool fWriteHitTimes;
 	std::ofstream fHitTimesFile;
+	// Component of each track's first step (-3 outside the DNA materials), for the hit dump
+	std::map<G4double, G4int> fTrackBirthComponent;
 	G4bool fScoreDirectDamage;
 	G4bool fScoreIndirectDamage;
 	G4bool fScoreQuasiDirectDamage;
