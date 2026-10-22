@@ -76,6 +76,7 @@ protected:
 	G4double fHydroxylBaseFraction;
 	G4double fProbabilityOfScavengingOnDNA;
 	G4bool fScavengeInHistones;
+	G4bool fKillSpeciesBornInHydrationShell;
 
 	// For defining types of damage to be accounted for
 	G4int fNumberOfBasePairsForDSB;

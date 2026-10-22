@@ -216,6 +216,14 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 	if (fPm->ParameterExists(GetFullParmName("ScavengeInHistones")))
 		fScavengeInHistones = fPm->GetBooleanParameter(GetFullParmName("ScavengeInHistones"));
 
+	// Species born in the hydration shell are kept by default, so an ionised shell water can give
+	// both a quasi-direct break and a free hydroxyl beside the backbone. ESR on hydrated DNA finds
+	// that holes made in the first hydration layer transfer to the DNA instead of forming hydroxyl;
+	// with this option every species whose first step lies in the shell is killed, as inside the DNA.
+	fKillSpeciesBornInHydrationShell = false;
+	if (fPm->ParameterExists(GetFullParmName("KillSpeciesBornInHydrationShell")))
+		fKillSpeciesBornInHydrationShell = fPm->GetBooleanParameter(GetFullParmName("KillSpeciesBornInHydrationShell"));
+
 	// Classify damage as SSBs and DSBs
 	fNumberOfBasePairsForDSB = 10;
 	if (fPm->ParameterExists(GetFullParmName("MaximumBasePairDistanceToConsiderDSB")))
@@ -726,8 +734,8 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 			G4bool isHydroxil = (speciesName == "OH^0");
 			G4bool isHydElectron =  (speciesName == "e_aq^-1");
 			//G4cout << "Species: " << speciesName << " in " << volumeName << " with trackID: " << trackID << " at time " << aStep->GetTrack()->GetLocalTime() << G4endl;
-			// Kills all species generated inside DNA volumes except for the hydration shell
-			if (fTrackSteps[trackID] == 1 && componentID != hydrationshell)
+			// Kills all species generated inside DNA volumes, the hydration shell only if asked
+			if (fTrackSteps[trackID] == 1 && (componentID != hydrationshell || fKillSpeciesBornInHydrationShell))
 			{
             	fTracksScavenged.push_back(aStep->GetTrack());
             	delete hit;
