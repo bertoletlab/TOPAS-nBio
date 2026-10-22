@@ -707,6 +707,11 @@ void TsScoreDNADamageSBS::AccumulateEvent()
     G4cout << "Accumulating event " << fCollectionsOfHits.size() << G4endl;
 	fCollectionsOfHits.push_back(fHits);
 	fHits.clear();
+	// Track IDs restart every event, so the per-track state must too: kept across events, a
+	// species born inside a DNA volume under a reused ID was past its first step and escaped
+	// the kill in ProcessHits, attacking the volume it was born in
+	fTrackSteps.clear();
+	fTrackLastVolume.clear();
 	G4double edep = fEdep;
 	fEventsEdep.push_back(edep);
 	fEdep = 0.;
