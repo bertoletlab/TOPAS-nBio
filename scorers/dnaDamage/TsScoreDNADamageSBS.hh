@@ -54,6 +54,11 @@ protected:
 	G4int fNumberOfHistoriesInRun;
 	// For Material-based filter
 	G4int fBasePairDepth;
+	// Opt-in chromosome assignment for geometries without a chromosome model (a plasmid lattice):
+	// the chromosome ID is read from the integer that follows this prefix in the name of the
+	// base-pair volume or one of its ancestors, plus one. Empty (default) keeps chromosome 1.
+	G4String fChromosomeIDFromVolumePrefix;
+	G4int ChromosomeIDFromVolumeName(G4TouchableHistory* touchable);
 	std::vector<G4Material*> fStrand1Materials;
 	std::vector<G4Material*> fStrand2Materials;
 

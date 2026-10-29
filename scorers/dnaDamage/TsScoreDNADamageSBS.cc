@@ -11,6 +11,7 @@
 // Authors: Alejandro Bertolet, Jan Schuemann
 
 #include "TsScoreDNADamageSBS.hh"
+#include <cctype>
 
 #include <fstream>
 
@@ -70,6 +71,29 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 
 	// Parameters for material filter
 	fBasePairDepth = 0;
+	// Without this, every plasmid of a lattice is chromosome 1, so two breaks on different plasmids
+	// whose base-pair indices fall within the DSB distance pair into a DSB, and the SDD cannot say
+	// which plasmid a site sits on. Measured on the 60Co plasmid runs of 2026-10-27: up to 0.10 of
+	// DSBs at 2.3e6 /s, under 0.002 above 3e8 /s.
+	fChromosomeIDFromVolumePrefix = "";
+	if (fPm->ParameterExists(GetFullParmName("ChromosomeIDFromVolumePrefix")))
+		fChromosomeIDFromVolumePrefix = fPm->GetStringParameter(GetFullParmName("ChromosomeIDFromVolumePrefix"));
+	if (!fChromosomeIDFromVolumePrefix.empty())
+	{
+		// The SDD writer indexes the chromosome table by ID (TsDNADamageCalculator::OutputSDDFile),
+		// so the table must list every chromosome the prefix can produce.
+		if (!fPm->ParameterExists(GetFullParmName("NumberOfChromosomes")) ||
+			!fPm->ParameterExists(GetFullParmName("BasePairsPerChromosome")))
+		{
+			G4cerr << "TOPAS is exiting due to a serious error in scoring setup." << G4endl;
+			G4cerr << GetFullParmName("ChromosomeIDFromVolumePrefix") << " needs "
+				   << GetFullParmName("NumberOfChromosomes") << " and "
+				   << GetFullParmName("BasePairsPerChromosome") << "." << G4endl;
+			fPm->AbortSession(1);
+		}
+		fChromosomeContents.assign(fPm->GetIntegerParameter(GetFullParmName("NumberOfChromosomes")),
+								   fPm->GetIntegerParameter(GetFullParmName("BasePairsPerChromosome")));
+	}
 	if (fPm->ParameterExists(GetFullParmName("BasePairPositionAtGeometricHierarchy")))
 		fBasePairDepth = fPm->GetIntegerParameter(GetFullParmName("BasePairPositionAtGeometricHierarchy"));
 	// These lists decide which steps the scorer looks at AT ALL: a step whose material is in
@@ -709,7 +733,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		hit->SetDNAComponentID(componentID);
 		hit->SetPosition(pos);
 		// Default options
-		hit->SetChromosomeID(1);
+		hit->SetChromosomeID(fChromosomeIDFromVolumePrefix.empty() ? 1 : ChromosomeIDFromVolumeName(touchable));
 		hit->SetBasePairID(hierarchicalIDs[0]);
 		hit->SetTimes(aStep->GetPreStepPoint()->GetLocalTime(), aStep->GetPreStepPoint()->GetGlobalTime());
 		if (fWriteHitTimes && fTrackBirthComponent.count(trackID)) hit->SetBirthComponent(fTrackBirthComponent[trackID]);
@@ -1074,6 +1098,39 @@ void TsScoreDNADamageSBS::AbsorbResultsFromWorkerScorer(TsVScorer* workerScorer)
 	workerMTScorer->fNumScavengedInBackboneOH = 0;
 	workerMTScorer->fNumScavengedInBaseOH     = 0;
 	workerMTScorer->fNumScavengedInBaseEaq    = 0;
+}
+
+// Chromosome ID from a volume-name prefix: walks from the base-pair volume up the touchable
+// history, takes the first name that starts with the prefix, and reads the integer right after
+// it ("Plasmid3/..." or "Plasmid3" gives 4). Returns 1 when no volume matches, so a geometry
+// without such volumes behaves as before.
+G4int TsScoreDNADamageSBS::ChromosomeIDFromVolumeName(G4TouchableHistory* touchable)
+{
+	const std::size_t n = fChromosomeIDFromVolumePrefix.size();
+	for (G4int d = fBasePairDepth; d <= touchable->GetHistoryDepth(); d++)
+	{
+		const G4String& name = touchable->GetVolume(d)->GetName();
+		if (name.compare(0, n, fChromosomeIDFromVolumePrefix) != 0)
+			continue;
+		std::size_t k = n;
+		G4int value = 0;
+		G4bool digits = false;
+		while (k < name.size() && std::isdigit(static_cast<unsigned char>(name[k])))
+		{
+			value = 10 * value + (name[k] - '0');
+			digits = true;
+			k++;
+		}
+		if (digits && value + 1 <= (G4int)fChromosomeContents.size())
+			return value + 1;
+		if (digits)
+		{
+			G4cerr << "TOPAS is exiting: volume " << name << " gives chromosome " << value + 1 << " beyond "
+				   << GetFullParmName("NumberOfChromosomes") << " = " << fChromosomeContents.size() << "." << G4endl;
+			fPm->AbortSession(1);
+		}
+	}
+	return 1;
 }
 
 // Default implementation (no more hierarchy levels, everything is chromosome 1)
