@@ -546,7 +546,9 @@ void TsNucleus::BuildDNA(vector<pair<G4ThreeVector, G4RotationMatrix*>> &Histone
 
 	vector<G4ThreeVector> DNAPath;
 	GenerateDNAPath(HistoneDetails, DNAPath);
-	SegmentDNAPath(DNAPath);
+	// The physical solids take one slab per path point, so they need the path resampled at one
+	// rise; the other models keep the raw points they have always been placed on.
+	SegmentDNAPath(DNAPath, BuildPhysical);
 
 	if (BuildPhysical){
 		PlaceDNAPhysical(DNAPath);
@@ -981,8 +983,10 @@ void TsNucleus::Bezier(G4ThreeVector &start,
 	}
 }
 
-// Split the DNA path into 0.34nm steps
-void TsNucleus::SegmentDNAPath(std::vector<G4ThreeVector> &path)
+// Split the DNA path into 0.34nm steps. The resampled path replaces the input only when writeBack
+// is set: the raw points of GenerateDNAPath lie about 0.24 nm apart, and before this flag existed the
+// resampled path was built and discarded, so every model was placed on the raw points.
+void TsNucleus::SegmentDNAPath(std::vector<G4ThreeVector> &path, G4bool writeBack)
 {
 	std::vector<G4ThreeVector> newPath;
 	double rise=0.34*nm;
@@ -1001,6 +1005,8 @@ void TsNucleus::SegmentDNAPath(std::vector<G4ThreeVector> &path)
 			counter++;
 		}
 	}
+	if (writeBack)
+		path = newPath;
 }
 
 // Use DNA path to place sphere DNA volumes

@@ -42,7 +42,7 @@ private:
 					   G4bool BuildSphere);
 	void GenerateDNAPath(std::vector<std::pair<G4ThreeVector, G4RotationMatrix*>> &HistoneDetails,
 						 std::vector<G4ThreeVector> &path);
-	void SegmentDNAPath(std::vector<G4ThreeVector> &path);
+	void SegmentDNAPath(std::vector<G4ThreeVector> &path, G4bool writeBack);
 	void PlaceDNASphere(std::vector<G4ThreeVector> &path, G4VPhysicalVolume* vol = NULL);
 	void PlaceDNAPhysical(std::vector<G4ThreeVector> &path, G4VPhysicalVolume* vol = NULL);
 	void PlaceDNA(std::vector<G4ThreeVector> &path, G4VPhysicalVolume* vol = NULL);

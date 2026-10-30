@@ -12,6 +12,8 @@
 
 #include "TsScoreDNADamageSBSNucleus.hh"
 
+#include <algorithm>
+
 TsScoreDNADamageSBSNucleus::TsScoreDNADamageSBSNucleus(TsParameterManager* pM, TsMaterialManager* mM, TsGeometryManager* gM, TsScoringManager* scM, TsExtensionManager* eM,
 		G4String scorerName, G4String quantity, G4String outFileName, G4bool isSubScorer)
 		: TsScoreDNADamageSBS(pM, mM, gM, scM, eM, scorerName, quantity, outFileName, isSubScorer)
@@ -19,20 +21,6 @@ TsScoreDNADamageSBSNucleus::TsScoreDNADamageSBSNucleus(TsParameterManager* pM, T
 	// Add hierarchical levels for this geometry
 	fHierarchicalLevels.push_back("Fiber");
 	fHierarchicalLevels.push_back("Voxel");
-
-	// Push back the total number of base pairs to the vector fChromosomeContents.
-	fChromosomeContents = {252823200,  252823200,  248157000,  248157000,  204040200,  204040200,
-                          195556200,  195556200,  184951200,  184951200,  174770400,  174770400,
-                          162468600,  162468600,  149318400,  149318400,  143379600,  143379600,
-                          138289200,  138289200,  137440800,  137440800,  135319800,  135319800,
-                          116655000,  116655000,  108595200,  108595200,  102656400,  102656400,
-                          90778800, 90778800,  80173800,  80173800,  77628600,  77628600,
-                          65326800,  65326800,  63630000,  63630000,  47934600,  47934600,
-                          50479800,  50479800,  58963800,  158226600};
-
-    // To have this info updated in the SDD header, rerun:
-	fDamageCalculator->OutputSDDHeader(fWriteMinimalSDDOutput, fPrimaryParticle, fMeanEnergy, fDosePerExposure, fChromosomeContents, fScoreIndirectDamage, fScoreOnBases,
-		fAuthor, fSimulationDetails, fSourceDetails, fSourceType, fEnergyDist, fIrrTarget, fCellCycle, fDNAStructure, fInVitroOrInVivo, fProliferationStatus, fMicroenvironment, fTime, fAddInfo);
 
 	// Geometry parameters specific for this scorer
 	if (fPm->ParameterExists(GetFullParmName("GeometryInfo")))
@@ -61,6 +49,25 @@ TsScoreDNADamageSBSNucleus::TsScoreDNADamageSBSNucleus(TsParameterManager* pM, T
 	}
 	// Reads files containing geometry and copy number maps
 	ReadGeometryAndCopyNumberMaps();
+
+	// Chromosome sizes follow from the maps: each voxel holds fBasePairsInAVoxel base pairs, so a
+	// chromosome holds that many times its voxel count. With the GeometryInfo file of the original
+	// model (424200 bp per voxel) this reproduces the table formerly written here, entry by entry;
+	// with another fibre content the SDD header and the chromosome positions stay consistent.
+	G4int nChromosomes = 0;
+	for (size_t i = 0; i < fChromosomeIDForEachVoxel.size(); i++)
+		nChromosomes = std::max(nChromosomes, fChromosomeIDForEachVoxel[i]);
+	std::vector<G4int> voxelsPerChromosome(nChromosomes, 0);
+	for (size_t i = 0; i < fChromosomeIDForEachVoxel.size(); i++)
+		if (fChromosomeIDForEachVoxel[i] >= 1)
+			voxelsPerChromosome[fChromosomeIDForEachVoxel[i] - 1]++;
+	fChromosomeContents.clear();
+	for (G4int i = 0; i < nChromosomes; i++)
+		fChromosomeContents.push_back(voxelsPerChromosome[i] * fBasePairsInAVoxel);
+
+	// The SDD header carries the chromosome sizes, so it is written once they are known.
+	fDamageCalculator->OutputSDDHeader(fWriteMinimalSDDOutput, fPrimaryParticle, fMeanEnergy, fDosePerExposure, fChromosomeContents, fScoreIndirectDamage, fScoreOnBases,
+		fAuthor, fSimulationDetails, fSourceDetails, fSourceType, fEnergyDist, fIrrTarget, fCellCycle, fDNAStructure, fInVitroOrInVivo, fProliferationStatus, fMicroenvironment, fTime, fAddInfo);
 }
 
 TsScoreDNADamageSBSNucleus::~TsScoreDNADamageSBSNucleus() { }
