@@ -113,6 +113,9 @@ protected:
 	// Hit record v2 (WriteHitRecordV2): every direct deposit, shell ionisation and radical
 	// encounter, with the random draws that decided it, for exact offline rescoring.
 	G4bool fWriteHitRecordV2;
+	// Electron ionisations in non-DNA material closer to DNA than this (navigator safety,
+	// a lower bound on the distance) are added to the record as kind "water"; 0 disables.
+	G4double fRecordWaterIonisationsWithin;
 	std::ofstream fRecordFile;
 	void WriteRecord(const G4Step* aStep, const char* kind, G4int componentID, G4int strandID,
 	                 const std::vector<G4int>& hIDs, G4int chromosomeID, const G4String& species,

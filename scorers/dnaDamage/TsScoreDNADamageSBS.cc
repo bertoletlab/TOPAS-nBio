@@ -21,6 +21,8 @@
 #include "G4VTouchable.hh"
 
 #include "G4VProcess.hh"
+#include "G4TransportationManager.hh"
+#include "G4Navigator.hh"
 #include "G4Molecule.hh"
 
 #include "G4Scheduler.hh"
@@ -360,6 +362,9 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 	fWriteHitRecordV2 = false;
 	if (fPm->ParameterExists(GetFullParmName("WriteHitRecordV2")))
 		fWriteHitRecordV2 = fPm->GetBooleanParameter(GetFullParmName("WriteHitRecordV2"));
+	fRecordWaterIonisationsWithin = 0;
+	if (fPm->ParameterExists(GetFullParmName("RecordWaterIonisationsWithin")))
+		fRecordWaterIonisationsWithin = fPm->GetDoubleParameter(GetFullParmName("RecordWaterIonisationsWithin"), "Length");
 	fWriteCSVWithExtensiveDamage = false;
 	if (fPm->ParameterExists(GetFullParmName("WriteCSVOutputWithAllDamageSpecification")))
 		fWriteCSVWithExtensiveDamage = fPm->GetBooleanParameter(GetFullParmName("WriteCSVOutputWithAllDamageSpecification"));
@@ -697,6 +702,24 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 
 	if (fWriteHitTimes && fTrackSteps[trackID] == 1)
 		fTrackBirthComponent[trackID] = materialMatched ? GetDNAComponentAndStrandID(touchable).first : -3;
+
+	// Water ionisations near DNA, for the offline outer-layer channel. The navigator safety is a
+	// lower bound on the distance to the DNA, so every ionisation truly within the distance is kept
+	// and the exact distance is computed offline from the DNA path. State is kept unchanged.
+	if (!materialMatched && fWriteHitRecordV2 && fRecordWaterIonisationsWithin > 0 && trackID >= 0 && edep > 0)
+	{
+		const G4VProcess* proc = aStep->GetPostStepPoint()->GetProcessDefinedStep();
+		if (proc && strstr(proc->GetProcessName(), "Ionisation") != NULL)
+		{
+			G4Navigator* nav = G4TransportationManager::GetTransportationManager()->GetNavigatorForTracking();
+			const G4double safety = nav->ComputeSafety(pos, fRecordWaterIonisationsWithin, true);
+			if (safety < fRecordWaterIonisationsWithin)
+			{
+				std::vector<G4int> noIDs;
+				WriteRecord(aStep, "water", -3, 0, noIDs, 0, "", safety / nanometer, -1, -1, 0);
+			}
+		}
+	}
 
 	// Goes on only if DNA materials has been matched
 	if (materialMatched)
