@@ -974,6 +974,8 @@ void TsScoreDNADamageSBS::AccumulateEvent()
 	// species born inside a DNA volume under a reused ID was past its first step and escaped
 	// the kill in ProcessHits, attacking the volume it was born in
 	fTrackSteps.clear();
+	// Worker threads may end without destroying the scorer, so the record is flushed per event
+	if (fRecordFile.is_open()) fRecordFile.flush();
 	fTrackLastVolume.clear();
 	fTrackBirthComponent.clear();
 	G4double edep = fEdep;
