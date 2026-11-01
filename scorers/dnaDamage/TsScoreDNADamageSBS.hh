@@ -119,7 +119,7 @@ protected:
 	std::ofstream fRecordFile;
 	void WriteRecord(const G4Step* aStep, const char* kind, G4int componentID, G4int strandID,
 	                 const std::vector<G4int>& hIDs, G4int chromosomeID, const G4String& species,
-	                 G4double u1, G4double u2, G4double u3, G4int outcome);
+	                 G4double u1, G4double u2, G4double u3, G4int outcome, const G4ThreeVector* where = nullptr);
 	G4bool fScoreDirectDamage;
 	G4bool fScoreIndirectDamage;
 	G4bool fScoreQuasiDirectDamage;

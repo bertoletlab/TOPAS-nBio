@@ -711,12 +711,14 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		const G4VProcess* proc = aStep->GetPostStepPoint()->GetProcessDefinedStep();
 		if (proc && strstr(proc->GetProcessName(), "Ionisation") != NULL)
 		{
+			// the navigator is located at the post-step point, where a discrete ionisation deposits
+			const G4ThreeVector post = aStep->GetPostStepPoint()->GetPosition();
 			G4Navigator* nav = G4TransportationManager::GetTransportationManager()->GetNavigatorForTracking();
-			const G4double safety = nav->ComputeSafety(pos, fRecordWaterIonisationsWithin, true);
+			const G4double safety = nav->ComputeSafety(post, fRecordWaterIonisationsWithin, true);
 			if (safety < fRecordWaterIonisationsWithin)
 			{
 				std::vector<G4int> noIDs;
-				WriteRecord(aStep, "water", -3, 0, noIDs, 0, "", safety / nanometer, -1, -1, 0);
+				WriteRecord(aStep, "water", -3, 0, noIDs, 0, "", safety / nanometer, -1, -1, 0, &post);
 			}
 		}
 	}
@@ -931,7 +933,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 
 void TsScoreDNADamageSBS::WriteRecord(const G4Step* aStep, const char* kind, G4int componentID, G4int strandID,
                                       const std::vector<G4int>& hIDs, G4int chromosomeID, const G4String& species,
-                                      G4double u1, G4double u2, G4double u3, G4int outcome)
+                                      G4double u1, G4double u2, G4double u3, G4int outcome, const G4ThreeVector* where)
 {
 	// One line per decision point. Hierarchical IDs are written raw, since the nucleus scorer
 	// resolves chromosome and base pair only at the end of the run; chromosome is the plasmid
@@ -944,7 +946,7 @@ void TsScoreDNADamageSBS::WriteRecord(const G4Step* aStep, const char* kind, G4i
 		            << "x_nm,y_nm,z_nm,bx_nm,by_nm,bz_nm,edep_eV,t_local_ps,t_global_ps,u1,u2,u3,outcome" << G4endl;
 	}
 	const G4Track* tr = aStep->GetTrack();
-	const G4ThreeVector p = aStep->GetPreStepPoint()->GetPosition();
+	const G4ThreeVector p = where ? *where : aStep->GetPreStepPoint()->GetPosition();
 	const G4ThreeVector b = tr->GetVertexPosition();
 	fRecordFile << GetEventID() + fNumberOfHistoriesInRun * GetRunID() << "," << kind << "," << chromosomeID << ","
 	            << (hIDs.size() > 0 ? hIDs[0] : -1) << "," << (hIDs.size() > 1 ? hIDs[1] : -1) << ","
