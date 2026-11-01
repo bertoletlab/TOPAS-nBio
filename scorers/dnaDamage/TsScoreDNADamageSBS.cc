@@ -357,6 +357,9 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 	fWriteHitTimes = false;
 	if (fPm->ParameterExists(GetFullParmName("WriteHitTimes")))
 		fWriteHitTimes = fPm->GetBooleanParameter(GetFullParmName("WriteHitTimes"));
+	fWriteHitRecordV2 = false;
+	if (fPm->ParameterExists(GetFullParmName("WriteHitRecordV2")))
+		fWriteHitRecordV2 = fPm->GetBooleanParameter(GetFullParmName("WriteHitRecordV2"));
 	fWriteCSVWithExtensiveDamage = false;
 	if (fPm->ParameterExists(GetFullParmName("WriteCSVOutputWithAllDamageSpecification")))
 		fWriteCSVWithExtensiveDamage = fPm->GetBooleanParameter(GetFullParmName("WriteCSVOutputWithAllDamageSpecification"));
@@ -733,7 +736,8 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		hit->SetDNAComponentID(componentID);
 		hit->SetPosition(pos);
 		// Default options
-		hit->SetChromosomeID(fChromosomeIDFromVolumePrefix.empty() ? 1 : ChromosomeIDFromVolumeName(touchable));
+		const G4int chromosomeOfHit = fChromosomeIDFromVolumePrefix.empty() ? 1 : ChromosomeIDFromVolumeName(touchable);
+		hit->SetChromosomeID(chromosomeOfHit);
 		hit->SetBasePairID(hierarchicalIDs[0]);
 		hit->SetTimes(aStep->GetPreStepPoint()->GetLocalTime(), aStep->GetPreStepPoint()->GetGlobalTime());
 		if (fWriteHitTimes && fTrackBirthComponent.count(trackID)) hit->SetBirthComponent(fTrackBirthComponent[trackID]);
@@ -742,13 +746,17 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		if (trackID >= 0 && edep > 0 && fScoreDirectDamage && ((componentID == base && fScoreOnBases) || (componentID == backbone && fScoreOnBackbones)))
         {
 			hit->SetDamageType(direct);
+			if (fWriteHitRecordV2) WriteRecord(aStep, "direct", componentID, strandID, hierarchicalIDs, chromosomeOfHit, "", -1, -1, -1, 1);
 			fHits.push_back(hit);
             return true;
 		}
 		// Adds quasi-direct damage
 		if (componentID == hydrationshell && strstr(processName, "Ionisation") != NULL && fScoreQuasiDirectDamage)
 		{
-         	if (G4UniformRand() < fProbabilityOfChargeTransferFromHydrationShellToBackbone)
+			const G4double uShell = G4UniformRand();
+			if (fWriteHitRecordV2) WriteRecord(aStep, "shell", componentID, strandID, hierarchicalIDs, chromosomeOfHit, "",
+			                                   uShell, -1, -1, uShell < fProbabilityOfChargeTransferFromHydrationShellToBackbone ? 1 : 0);
+         	if (uShell < fProbabilityOfChargeTransferFromHydrationShellToBackbone)
 			{
 				hit->SetDNAComponentID(backbone);
 				hit->SetDamageType(quasidirect);
@@ -772,6 +780,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 			// Kills all species generated inside DNA volumes, the hydration shell only if asked
 			if (fTrackSteps[trackID] == 1 && (componentID != hydrationshell || fKillSpeciesBornInHydrationShell))
 			{
+				if (fWriteHitRecordV2) WriteRecord(aStep, "birthkill", componentID, strandID, hierarchicalIDs, chromosomeOfHit, speciesName, -1, -1, -1, 0);
             	fTracksScavenged.push_back(aStep->GetTrack());
             	delete hit;
             	return false;
@@ -781,36 +790,55 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 					 && (componentID == base || componentID == backbone) && enteringInNewVolume)
 			{
 				hit->SetEdep(-0.001 * eV);
-				if (G4UniformRand() < fProbabilityOfScavengingOnDNA)
+				// Draws are captured in the order they are consumed, so the random sequence and every
+				// output are unchanged; outcome 0 not taken up, 1 base damage, 2 base without damage,
+				// 3 backbone damage, 4 backbone without damage, 5 taken up by an unscored moiety.
+				const G4double uScav = G4UniformRand();
+				G4double uPart = -1, uConv = -1;
+				G4int recOutcome = 0;
+				if (uScav < fProbabilityOfScavengingOnDNA)
 				{
 					fTracksScavenged.push_back(aStep->GetTrack());
-					const G4bool toBase = isHydElectron || (G4UniformRand() < fHydroxylBaseFraction);
+					if (!isHydElectron) uPart = G4UniformRand();
+					const G4bool toBase = isHydElectron || (uPart < fHydroxylBaseFraction);
+					recOutcome = 5;
 					if (toBase && fScoreOnBases)
 					{
 						fNumScavengedInBase++;
 						if (isHydroxil) fNumScavengedInBaseOH++;
 						else fNumScavengedInBaseEaq++;
 						hit->SetDNAComponentID(base);
-						if (G4UniformRand() < fProbabilityOfDamageInBase)
+						uConv = G4UniformRand();
+						recOutcome = uConv < fProbabilityOfDamageInBase ? 1 : 2;
+						if (fWriteHitRecordV2) WriteRecord(aStep, "attack", base, strandID, hierarchicalIDs, chromosomeOfHit, speciesName, uScav, uPart, uConv, recOutcome);
+						if (recOutcome == 1)
 						{
 							hit->SetDamageType(indirect);
 							fHits.push_back(hit);
 							return true;
 						}
+						delete hit;
+						return false;
 					}
 					else if (!toBase && fScoreOnBackbones)
 					{
 						fNumScavengedInBackbone++;
 						fNumScavengedInBackboneOH++;
 						hit->SetDNAComponentID(backbone);
-						if (G4UniformRand() < fProbabilityOfDamageInBackbone)
+						uConv = G4UniformRand();
+						recOutcome = uConv < fProbabilityOfDamageInBackbone ? 3 : 4;
+						if (fWriteHitRecordV2) WriteRecord(aStep, "attack", backbone, strandID, hierarchicalIDs, chromosomeOfHit, speciesName, uScav, uPart, uConv, recOutcome);
+						if (recOutcome == 3)
 						{
 							hit->SetDamageType(indirect);
 							fHits.push_back(hit);
 							return true;
 						}
+						delete hit;
+						return false;
 					}
 				}
+				if (fWriteHitRecordV2) WriteRecord(aStep, "attack", componentID, strandID, hierarchicalIDs, chromosomeOfHit, speciesName, uScav, uPart, uConv, recOutcome);
 				delete hit;
 				return false;
 			}
@@ -868,6 +896,7 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 			{
                 fTracksScavenged.push_back(aStep->GetTrack());
 				fNumScavengedInHistone++;
+				if (fWriteHitRecordV2) WriteRecord(aStep, "histone", componentID, strandID, hierarchicalIDs, chromosomeOfHit, speciesName, -1, -1, -1, 0);
                 delete hit;
                 return false;
 			}
@@ -875,6 +904,34 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 		delete hit;
 	}
     return false;
+}
+
+void TsScoreDNADamageSBS::WriteRecord(const G4Step* aStep, const char* kind, G4int componentID, G4int strandID,
+                                      const std::vector<G4int>& hIDs, G4int chromosomeID, const G4String& species,
+                                      G4double u1, G4double u2, G4double u3, G4int outcome)
+{
+	// One line per decision point. Hierarchical IDs are written raw, since the nucleus scorer
+	// resolves chromosome and base pair only at the end of the run; chromosome is the plasmid
+	// value (prefix rule) or 1. Positions in nm, times in ps, track vertex as birth position.
+	if (!fRecordFile.is_open())
+	{
+		fRecordFile.open(fOutFileName + "_record.csv");
+		fRecordFile.precision(10);
+		fRecordFile << "event,kind,chromosome,h0,h1,h2,strand,component,track,parent,particle,species,"
+		            << "x_nm,y_nm,z_nm,bx_nm,by_nm,bz_nm,edep_eV,t_local_ps,t_global_ps,u1,u2,u3,outcome" << G4endl;
+	}
+	const G4Track* tr = aStep->GetTrack();
+	const G4ThreeVector p = aStep->GetPreStepPoint()->GetPosition();
+	const G4ThreeVector b = tr->GetVertexPosition();
+	fRecordFile << GetEventID() + fNumberOfHistoriesInRun * GetRunID() << "," << kind << "," << chromosomeID << ","
+	            << (hIDs.size() > 0 ? hIDs[0] : -1) << "," << (hIDs.size() > 1 ? hIDs[1] : -1) << ","
+	            << (hIDs.size() > 2 ? hIDs[2] : -1) << "," << strandID << "," << componentID << ","
+	            << tr->GetTrackID() << "," << tr->GetParentID() << "," << tr->GetParticleDefinition()->GetParticleName() << ","
+	            << species << "," << p.x() / nanometer << "," << p.y() / nanometer << "," << p.z() / nanometer << ","
+	            << b.x() / nanometer << "," << b.y() / nanometer << "," << b.z() / nanometer << ","
+	            << aStep->GetTotalEnergyDeposit() / eV << "," << aStep->GetPreStepPoint()->GetLocalTime() / picosecond << ","
+	            << aStep->GetPreStepPoint()->GetGlobalTime() / picosecond << "," << u1 << "," << u2 << "," << u3 << ","
+	            << outcome << "\n";
 }
 
 void TsScoreDNADamageSBS::UserHookForPostTimeStepAction()
@@ -975,6 +1032,7 @@ void TsScoreDNADamageSBS::UserHookForEndOfRun()
 	}
 	G4cout << "Number of lesions in Run: " << numberOfLesions << G4endl;
 	if (fWriteHitTimes) fHitTimesFile.close();
+	if (fRecordFile.is_open()) fRecordFile.close();
 	fCollectionsOfHits.clear();
 	fEventsEdep.clear();
 }

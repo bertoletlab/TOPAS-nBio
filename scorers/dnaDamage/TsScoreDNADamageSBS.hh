@@ -110,6 +110,13 @@ protected:
 	std::ofstream fHitTimesFile;
 	// Component of each track's first step (-3 outside the DNA materials), for the hit dump
 	std::map<G4double, G4int> fTrackBirthComponent;
+	// Hit record v2 (WriteHitRecordV2): every direct deposit, shell ionisation and radical
+	// encounter, with the random draws that decided it, for exact offline rescoring.
+	G4bool fWriteHitRecordV2;
+	std::ofstream fRecordFile;
+	void WriteRecord(const G4Step* aStep, const char* kind, G4int componentID, G4int strandID,
+	                 const std::vector<G4int>& hIDs, G4int chromosomeID, const G4String& species,
+	                 G4double u1, G4double u2, G4double u3, G4int outcome);
 	G4bool fScoreDirectDamage;
 	G4bool fScoreIndirectDamage;
 	G4bool fScoreQuasiDirectDamage;
