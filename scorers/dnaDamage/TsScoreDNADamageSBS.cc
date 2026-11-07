@@ -223,6 +223,9 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 			fPm->AbortSession(1);
 		}
 	}
+	fProbabilityOfDamageInBaseByHydElectron = -1;
+	if (fPm->ParameterExists(GetFullParmName("ProbabilityOfIndirectDamageToBaseByHydratedElectron")))
+		fProbabilityOfDamageInBaseByHydElectron = fPm->GetUnitlessParameter(GetFullParmName("ProbabilityOfIndirectDamageToBaseByHydratedElectron"));
 	fHydroxylBaseFraction = 0.68;
 	if (fPm->ParameterExists(GetFullParmName("HydroxylBaseFraction")))
 		fHydroxylBaseFraction = fPm->GetUnitlessParameter(GetFullParmName("HydroxylBaseFraction"));
@@ -834,7 +837,10 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 						else fNumScavengedInBaseEaq++;
 						hit->SetDNAComponentID(base);
 						uConv = G4UniformRand();
-						recOutcome = uConv < fProbabilityOfDamageInBase ? 1 : 2;
+						// one draw either way, so setting the option changes outcomes only, never the random sequence
+						const G4double pBase = (isHydElectron && fProbabilityOfDamageInBaseByHydElectron >= 0)
+							? fProbabilityOfDamageInBaseByHydElectron : fProbabilityOfDamageInBase;
+						recOutcome = uConv < pBase ? 1 : 2;
 						if (fWriteHitRecordV2) WriteRecord(aStep, "attack", base, strandID, hierarchicalIDs, chromosomeOfHit, speciesName, uScav, uPart, uConv, recOutcome);
 						if (recOutcome == 1)
 						{
@@ -882,7 +888,9 @@ G4bool TsScoreDNADamageSBS::ProcessHits(G4Step* aStep, G4TouchableHistory*)
 					fNumScavengedInBase++;
 					if (isHydroxil) fNumScavengedInBaseOH++;
 					else fNumScavengedInBaseEaq++;
-					if (G4UniformRand() < fProbabilityOfDamageInBase)
+					const G4double pBase = (isHydElectron && fProbabilityOfDamageInBaseByHydElectron >= 0)
+						? fProbabilityOfDamageInBaseByHydElectron : fProbabilityOfDamageInBase;
+					if (G4UniformRand() < pBase)
 					{
 						hit->SetDamageType(indirect);
 						fHits.push_back(hit);

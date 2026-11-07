@@ -78,6 +78,9 @@ protected:
 	G4double fProbabilityOfScavengingInBase;
 	G4double fProbabilityOfDamageInBackbone;
 	G4double fProbabilityOfDamageInBase;
+	// Conversion of a hydrated-electron base attack into base damage; negative (default) means the
+	// same as fProbabilityOfDamageInBase, so outputs are unchanged unless the parameter is set.
+	G4double fProbabilityOfDamageInBaseByHydElectron;
 	// chemical partition mode: one acceptance probability, moiety drawn from the chemistry
 	G4bool fIndirectPartitionChemical;
 	G4double fHydroxylBaseFraction;
