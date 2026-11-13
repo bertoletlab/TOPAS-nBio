@@ -17,6 +17,10 @@
 #include "TsVNtupleScorer.hh"
 
 #include <fstream>
+#include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "TsDNADamageCalculator.hh"
 #include "TsHitInDNA.hh"
@@ -120,6 +124,49 @@ protected:
 	// a lower bound on the distance) are added to the record as kind "water"; 0 disables.
 	G4double fRecordWaterIonisationsWithin;
 	std::ofstream fRecordFile;
+	void EnsureRecordFile();
+
+	// Hit record v3 (WriteHitRecordV3, implies v2): every v2 row unchanged, plus rows of kind
+	// "deposit" (a physics-stage step with energy deposited within a radius of a DNA site) and
+	// "nearpass" (a tracked radical that came within a reach of a DNA site, one row per pass with
+	// the closest approach), and four columns appended to every row: molecule_id, n_oh_5nm,
+	// n_eaq_5nm, n_oh_10nm (radical counts around each attack). A site is a base pair, located by
+	// the placement of its Base1_ volume as in TsDNAMaxTimeStep; distances are from that point
+	// (the duplex axis), and the reach adds RecordSiteRadius so that the radii read as distances
+	// from the moiety surface. Draws no random number, so every v2 row is unchanged.
+	G4bool fWriteHitRecordV3;
+	G4double fV3DepositRadius;     // physics-stage deposits within this of a moiety surface
+	G4double fV3SiteRadius;        // duplex radius, centre to outer surface
+	G4double fV3ReactRadius;       // radical reach added to the moiety surface
+	G4double fV3Margin;            // near-pass margin beyond the reach
+	std::vector<G4String> fV3Species;
+	G4bool fV3IndexBuilt;
+	G4double fV3Cell;
+	G4double fV3DepositReach, fV3PassReach;   // centre-to-point distances actually tested
+	struct V3Site { G4ThreeVector pos; G4int chromosome; G4int bp; };
+	std::vector<V3Site> fV3Sites;
+	std::unordered_map<long long, std::vector<int> > fV3Grid;
+	std::unordered_set<long long> fV3Near;    // cells with a site in them or in a neighbouring cell
+	struct V3Pending
+	{
+		G4int event, chromosome, bp, parent;
+		G4double dmin;
+		G4ThreeVector pos, vertex;
+		G4double tLocal, tGlobal;
+		G4String species, particle;
+	};
+	std::map<G4int, V3Pending> fV3Pending;    // by track ID, cleared every event
+	void BuildV3Index();
+	long long V3Key(const G4ThreeVector& p, int dx = 0, int dy = 0, int dz = 0) const;
+	// distance (mm) from p to the nearest site within maxd, or -1; the site index in idx
+	G4double V3Nearest(const G4ThreeVector& p, G4double maxd, int& idx) const;
+	void V3Observe(const G4Step* aStep, G4int trackID, G4double edep, G4bool materialMatched, G4TouchableHistory* touchable);
+	void V3FlushPending();
+	void V3Densities(const G4Step* aStep, G4int out[3]) const;
+	void WriteV3Row(const char* kind, G4int event, G4int chromosome, G4int bp, G4int strand, G4int component,
+	                G4int track, G4int parent, const G4String& particle, const G4String& species,
+	                const G4ThreeVector& p, const G4ThreeVector& vertex, G4double edep_eV,
+	                G4double tLocal, G4double tGlobal, G4double distance_nm);
 	void WriteRecord(const G4Step* aStep, const char* kind, G4int componentID, G4int strandID,
 	                 const std::vector<G4int>& hIDs, G4int chromosomeID, const G4String& species,
 	                 G4double u1, G4double u2, G4double u3, G4int outcome, const G4ThreeVector* where = nullptr);
