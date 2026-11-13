@@ -24,6 +24,8 @@
 
 #include "TsDNADamageCalculator.hh"
 #include "TsHitInDNA.hh"
+#include "G4VPhysicalVolume.hh"
+#include "G4RotationMatrix.hh"
 #include "TsFociAnalysis.hh"
 
 class TsScoreDNADamageSBS : public TsVNtupleScorer
@@ -144,13 +146,18 @@ protected:
 	G4bool fV3IndexBuilt;
 	G4double fV3Cell;
 	G4double fV3DepositReach, fV3PassReach;   // centre-to-point distances actually tested
-	struct V3Site { G4ThreeVector pos; G4int chromosome; G4int bp; };
+	// back[k]: the Backbone<k+1>_ daughter of the site's base pair (nullptr when absent); env indexes fV3Envs
+	struct V3Site { G4ThreeVector pos; G4int chromosome; G4int bp; const G4VPhysicalVolume* back[2]; G4int env; };
+	struct V3Env { G4RotationMatrix rotInv; G4ThreeVector trans; };
+	std::vector<V3Env> fV3Envs;
+	// 1 or 2: the backbone solid nearer to p, or -1 when the site has no two backbones
+	G4int V3NearestStrand(const V3Site& s, const G4ThreeVector& p) const;
 	std::vector<V3Site> fV3Sites;
 	std::unordered_map<long long, std::vector<int> > fV3Grid;
 	std::unordered_set<long long> fV3Near;    // cells with a site in them or in a neighbouring cell
 	struct V3Pending
 	{
-		G4int event, chromosome, bp, parent;
+		G4int event, chromosome, bp, parent, site;
 		G4double dmin;
 		G4ThreeVector pos, vertex;
 		G4double tLocal, tGlobal;

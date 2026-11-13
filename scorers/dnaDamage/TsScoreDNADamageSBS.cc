@@ -30,6 +30,7 @@
 #include "G4PhysicalVolumeStore.hh"
 #include "G4LogicalVolume.hh"
 #include "G4VPhysicalVolume.hh"
+#include "G4VSolid.hh"
 #include "G4TrackStatus.hh"
 #include <cmath>
 #include <cfloat>
@@ -1054,7 +1055,7 @@ long long TsScoreDNADamageSBS::V3Key(const G4ThreeVector& p, int dx, int dy, int
 void TsScoreDNADamageSBS::BuildV3Index()
 {
 	fV3IndexBuilt = true;
-	fV3Sites.clear(); fV3Grid.clear(); fV3Near.clear();
+	fV3Sites.clear(); fV3Grid.clear(); fV3Near.clear(); fV3Envs.clear();
 	const std::size_t n = fV3SitePrefix.size();
 	G4PhysicalVolumeStore* store = G4PhysicalVolumeStore::GetInstance();
 	for (auto it = store->begin(); it != store->end(); ++it)
@@ -1069,6 +1070,17 @@ void TsScoreDNADamageSBS::BuildV3Index()
 		G4LogicalVolume* lv = pv->GetLogicalVolume();
 		const G4RotationMatrix rot = pv->GetObjectRotationValue();
 		const G4ThreeVector trans = pv->GetObjectTranslation();
+		V3Env env; env.rotInv = rot.inverse(); env.trans = trans;
+		const G4int envIndex = (G4int)fV3Envs.size();
+		fV3Envs.push_back(env);
+		// the two backbone daughters of each base pair, by copy number, to tell the nearer strand
+		std::map<G4int, const G4VPhysicalVolume*> back1, back2;
+		for (size_t i = 0; i < lv->GetNoDaughters(); i++)
+		{
+			const G4VPhysicalVolume* d = lv->GetDaughter(i);
+			if (d->GetName().find("Backbone1_") != std::string::npos) back1[d->GetCopyNo()] = d;
+			else if (d->GetName().find("Backbone2_") != std::string::npos) back2[d->GetCopyNo()] = d;
+		}
 		for (size_t i = 0; i < lv->GetNoDaughters(); i++)
 		{
 			G4VPhysicalVolume* d = lv->GetDaughter(i);
@@ -1077,6 +1089,10 @@ void TsScoreDNADamageSBS::BuildV3Index()
 			s.pos = rot * d->GetObjectTranslation() + trans;
 			s.chromosome = fChromosomeIDFromVolumePrefix.empty() ? 1 : value + 1;
 			s.bp = d->GetCopyNo();
+			s.env = envIndex;
+			auto b1 = back1.find(s.bp), b2 = back2.find(s.bp);
+			s.back[0] = b1 == back1.end() ? nullptr : b1->second;
+			s.back[1] = b2 == back2.end() ? nullptr : b2->second;
 			fV3Sites.push_back(s);
 		}
 	}
@@ -1116,6 +1132,22 @@ G4double TsScoreDNADamageSBS::V3Nearest(const G4ThreeVector& p, G4double maxd, i
 		}
 	}
 	return idx < 0 ? -1. : std::sqrt(best);
+}
+
+G4int TsScoreDNADamageSBS::V3NearestStrand(const V3Site& s, const G4ThreeVector& p) const
+{
+	if (!s.back[0] || !s.back[1]) return -1;
+	const V3Env& e = fV3Envs[s.env];
+	const G4ThreeVector pe = e.rotInv * (p - e.trans);   // world to the envelope frame
+	G4double dist[2];
+	for (int k = 0; k < 2; k++)
+	{
+		const G4VPhysicalVolume* pv = s.back[k];
+		const G4ThreeVector pl = pv->GetObjectRotationValue().inverse() * (pe - pv->GetObjectTranslation());
+		G4VSolid* solid = pv->GetLogicalVolume()->GetSolid();
+		dist[k] = (solid->Inside(pl) != kOutside) ? 0. : solid->DistanceToIn(pl);
+	}
+	return dist[0] <= dist[1] ? 1 : 2;
 }
 
 void TsScoreDNADamageSBS::V3Densities(const G4Step* aStep, G4int out[3]) const
@@ -1165,12 +1197,14 @@ void TsScoreDNADamageSBS::V3Observe(const G4Step* aStep, G4int trackID, G4double
 		int idx;
 		const G4double d = V3Nearest(p, fV3DepositReach, idx);
 		if (idx < 0) return;
-		G4int comp = -3, strand = -1;
+		// component is the volume's own (-3 outside the DNA materials); strand is the nearer backbone
+		G4int comp = -3;
 		if (materialMatched)
 		{
 			const std::pair<G4int, G4int> cs = GetDNAComponentAndStrandID(touchable);
-			if (cs.first != notadnacomponent) { comp = cs.first; strand = cs.second; }
+			if (cs.first != notadnacomponent) comp = cs.first;
 		}
+		const G4int strand = V3NearestStrand(fV3Sites[idx], p);
 		WriteV3Row("deposit", event, fV3Sites[idx].chromosome, fV3Sites[idx].bp, strand, comp, trackID, tr->GetParentID(),
 		           tr->GetParticleDefinition()->GetParticleName(), "", p, tr->GetVertexPosition(), edep / eV,
 		           aStep->GetPreStepPoint()->GetLocalTime(), aStep->GetPreStepPoint()->GetGlobalTime(), d / nanometer);
@@ -1186,7 +1220,7 @@ void TsScoreDNADamageSBS::V3Observe(const G4Step* aStep, G4int trackID, G4double
 	{
 		if (pend == fV3Pending.end()) return;
 		const V3Pending& v = pend->second;
-		WriteV3Row("nearpass", v.event, v.chromosome, v.bp, -1, -1, trackID, v.parent, v.particle, v.species, v.pos, v.vertex, 0.,
+		WriteV3Row("nearpass", v.event, v.chromosome, v.bp, V3NearestStrand(fV3Sites[v.site], v.pos), -1, trackID, v.parent, v.particle, v.species, v.pos, v.vertex, 0.,
 		           v.tLocal, v.tGlobal, v.dmin / nanometer);
 		fV3Pending.erase(pend);
 		return;
@@ -1197,6 +1231,7 @@ void TsScoreDNADamageSBS::V3Observe(const G4Step* aStep, G4int trackID, G4double
 	for (size_t i = 0; i < fV3Species.size(); i++) if (fV3Species[i] == species) { listed = true; break; }
 	if (!listed) return;
 	V3Pending v;
+	v.site = idx;
 	v.event = event; v.chromosome = fV3Sites[idx].chromosome; v.bp = fV3Sites[idx].bp; v.parent = tr->GetParentID();
 	v.dmin = d; v.pos = p; v.vertex = tr->GetVertexPosition();
 	v.tLocal = aStep->GetPostStepPoint()->GetLocalTime(); v.tGlobal = aStep->GetPostStepPoint()->GetGlobalTime();
@@ -1209,7 +1244,7 @@ void TsScoreDNADamageSBS::V3FlushPending()
 	for (auto& kv : fV3Pending)
 	{
 		const V3Pending& v = kv.second;
-		WriteV3Row("nearpass", v.event, v.chromosome, v.bp, -1, -1, kv.first, v.parent, v.particle, v.species, v.pos, v.vertex, 0.,
+		WriteV3Row("nearpass", v.event, v.chromosome, v.bp, V3NearestStrand(fV3Sites[v.site], v.pos), -1, kv.first, v.parent, v.particle, v.species, v.pos, v.vertex, 0.,
 		           v.tLocal, v.tGlobal, v.dmin / nanometer);
 	}
 	fV3Pending.clear();
