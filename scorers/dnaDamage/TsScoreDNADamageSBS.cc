@@ -387,6 +387,11 @@ TsScoreDNADamageSBS::TsScoreDNADamageSBS(TsParameterManager* pM, TsMaterialManag
 		fWriteHitRecordV2 = true;
 		if (fPm->ParameterExists(GetFullParmName("RecordDepositRadius")))
 			fV3DepositRadius = fPm->GetDoubleParameter(GetFullParmName("RecordDepositRadius"), "Length");
+		// Without ChromosomeIDFromVolumePrefix the sites are the Base1_ daughters of the volumes named
+		// by RecordSitePrefix (default "Plasmid") and the chromosome is 1, as in every v2 row.
+		fV3SitePrefix = fChromosomeIDFromVolumePrefix.empty() ? G4String("Plasmid") : fChromosomeIDFromVolumePrefix;
+		if (fChromosomeIDFromVolumePrefix.empty() && fPm->ParameterExists(GetFullParmName("RecordSitePrefix")))
+			fV3SitePrefix = fPm->GetStringParameter(GetFullParmName("RecordSitePrefix"));
 		if (fPm->ParameterExists(GetFullParmName("RecordSiteRadius")))
 			fV3SiteRadius = fPm->GetDoubleParameter(GetFullParmName("RecordSiteRadius"), "Length");
 		if (fPm->ParameterExists(GetFullParmName("RecordNearPassReactRadius")))
@@ -1050,18 +1055,13 @@ void TsScoreDNADamageSBS::BuildV3Index()
 {
 	fV3IndexBuilt = true;
 	fV3Sites.clear(); fV3Grid.clear(); fV3Near.clear();
-	if (fChromosomeIDFromVolumePrefix.empty())
-	{
-		G4cout << "-- Hit record v3: no ChromosomeIDFromVolumePrefix, so no DNA sites are indexed and only the density columns are written." << G4endl;
-		return;
-	}
-	const std::size_t n = fChromosomeIDFromVolumePrefix.size();
+	const std::size_t n = fV3SitePrefix.size();
 	G4PhysicalVolumeStore* store = G4PhysicalVolumeStore::GetInstance();
 	for (auto it = store->begin(); it != store->end(); ++it)
 	{
 		G4VPhysicalVolume* pv = *it;
 		const G4String& name = pv->GetName();
-		if (name.compare(0, n, fChromosomeIDFromVolumePrefix) != 0) continue;
+		if (name.compare(0, n, fV3SitePrefix) != 0) continue;
 		if (name.find('/') != std::string::npos) continue;
 		std::size_t k = n; G4int value = 0; G4bool digits = false;
 		while (k < name.size() && std::isdigit(static_cast<unsigned char>(name[k]))) { value = 10 * value + (name[k] - '0'); digits = true; k++; }
@@ -1075,12 +1075,11 @@ void TsScoreDNADamageSBS::BuildV3Index()
 			if (d->GetName().find("Base1_") == std::string::npos) continue;
 			V3Site s;
 			s.pos = rot * d->GetObjectTranslation() + trans;
-			s.chromosome = value + 1;
+			s.chromosome = fChromosomeIDFromVolumePrefix.empty() ? 1 : value + 1;
 			s.bp = d->GetCopyNo();
 			fV3Sites.push_back(s);
 		}
 	}
-	std::unordered_set<long long> cells;
 	for (size_t i = 0; i < fV3Sites.size(); i++)
 	{
 		const long long key = V3Key(fV3Sites[i].pos);
@@ -1094,6 +1093,7 @@ void TsScoreDNADamageSBS::BuildV3Index()
 			fV3Near.insert(V3Key(p, dx, dy, dz));
 		(void)key;
 	}
+	if (fV3Sites.empty()) G4cout << "-- Hit record v3: no volume named " << fV3SitePrefix << "<n> with Base1_ daughters, so only the density columns are written." << G4endl;
 	G4cout << "-- Hit record v3: " << fV3Sites.size() << " DNA sites in a " << G4BestUnit(fV3Cell, "Length")
 	       << " grid; deposits within " << G4BestUnit(fV3DepositRadius, "Length") << " and radical passes within "
 	       << G4BestUnit(fV3ReactRadius + fV3Margin, "Length") << " of the duplex surface (site radius "
@@ -1176,34 +1176,32 @@ void TsScoreDNADamageSBS::V3Observe(const G4Step* aStep, G4int trackID, G4double
 		           aStep->GetPreStepPoint()->GetLocalTime(), aStep->GetPreStepPoint()->GetGlobalTime(), d / nanometer);
 		return;
 	}
-	// radicals: one pending pass per track, closed when the radical is next seen out of reach
-	const G4String species = NormalizeSpeciesName(GetMolecule(tr)->GetName());
-	G4bool listed = false;
-	for (size_t i = 0; i < fV3Species.size(); i++) if (fV3Species[i] == species) { listed = true; break; }
-	if (!listed) return;
+	// radicals: one pending pass per track, closed when the radical is next seen out of reach. The
+	// cheap distance test comes first, since most molecule steps are far from any site.
 	const G4ThreeVector p = aStep->GetPostStepPoint()->GetPosition();
 	int idx;
 	const G4double d = V3Nearest(p, fV3PassReach, idx);
 	auto pend = fV3Pending.find(trackID);
-	if (idx >= 0)
+	if (idx < 0)
 	{
-		if (pend == fV3Pending.end() || d < pend->second.dmin)
-		{
-			V3Pending v;
-			v.event = event; v.chromosome = fV3Sites[idx].chromosome; v.bp = fV3Sites[idx].bp; v.parent = tr->GetParentID();
-			v.dmin = d; v.pos = p; v.vertex = tr->GetVertexPosition();
-			v.tLocal = aStep->GetPostStepPoint()->GetLocalTime(); v.tGlobal = aStep->GetPostStepPoint()->GetGlobalTime();
-			v.species = species; v.particle = tr->GetParticleDefinition()->GetParticleName();
-			fV3Pending[trackID] = v;
-		}
-	}
-	else if (pend != fV3Pending.end())
-	{
+		if (pend == fV3Pending.end()) return;
 		const V3Pending& v = pend->second;
 		WriteV3Row("nearpass", v.event, v.chromosome, v.bp, -1, -1, trackID, v.parent, v.particle, v.species, v.pos, v.vertex, 0.,
 		           v.tLocal, v.tGlobal, v.dmin / nanometer);
 		fV3Pending.erase(pend);
+		return;
 	}
+	if (pend != fV3Pending.end() && !(d < pend->second.dmin)) return;
+	const G4String species = NormalizeSpeciesName(GetMolecule(tr)->GetName());
+	G4bool listed = false;
+	for (size_t i = 0; i < fV3Species.size(); i++) if (fV3Species[i] == species) { listed = true; break; }
+	if (!listed) return;
+	V3Pending v;
+	v.event = event; v.chromosome = fV3Sites[idx].chromosome; v.bp = fV3Sites[idx].bp; v.parent = tr->GetParentID();
+	v.dmin = d; v.pos = p; v.vertex = tr->GetVertexPosition();
+	v.tLocal = aStep->GetPostStepPoint()->GetLocalTime(); v.tGlobal = aStep->GetPostStepPoint()->GetGlobalTime();
+	v.species = species; v.particle = tr->GetParticleDefinition()->GetParticleName();
+	fV3Pending[trackID] = v;
 }
 
 void TsScoreDNADamageSBS::V3FlushPending()

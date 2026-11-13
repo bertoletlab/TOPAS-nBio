@@ -138,6 +138,7 @@ protected:
 	G4double fV3DepositRadius;     // physics-stage deposits within this of a moiety surface
 	G4double fV3SiteRadius;        // duplex radius, centre to outer surface
 	G4double fV3ReactRadius;       // radical reach added to the moiety surface
+	G4String fV3SitePrefix;        // volumes whose Base1_ daughters are the sites
 	G4double fV3Margin;            // near-pass margin beyond the reach
 	std::vector<G4String> fV3Species;
 	G4bool fV3IndexBuilt;
