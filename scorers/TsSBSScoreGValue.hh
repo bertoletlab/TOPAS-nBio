@@ -15,6 +15,7 @@
 #include "Randomize.hh"
 
 #include <stdint.h>
+#include <set>
 
 class G4MolecularConfiguration;
 
@@ -67,6 +68,11 @@ private:
     G4double* fTimeToRecord;
     G4int fNbTimeToRecord;
     G4int fNbOfScoredEvents;
+    // Opt-in (FollowChargeExchangeOfPrimary): an ion's charge change kills the track and starts a new one (alpha, alpha+,
+    // helium) with a new track ID and the primary as parent, so a kill keyed on ParentID == 0 stops applying at the first
+    // exchange and the ion runs to rest. With the option the lineage of charge-change continuations counts as the primary.
+    G4bool fFollowChargeExchange;
+    std::set<G4int> fPrimaryLineage;
     G4double fEnergyLossKill;
     G4double fEnergyLossAbort;
     G4double fEnergyLoss;

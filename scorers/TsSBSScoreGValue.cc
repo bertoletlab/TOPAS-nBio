@@ -10,6 +10,8 @@
 // ********************************************************************
 
 #include "TsSBSScoreGValue.hh"
+#include "G4VProcess.hh"
+#include <cstring>
 
 #include "G4RunManager.hh"
 #include "G4SystemOfUnits.hh"
@@ -56,6 +58,10 @@ fPm(pM), fEnergyDepositPerEvent(0), fSumEnergy(0), fSumEnergy2(0)
     fEnergyLossAbort = fPm->GetDoubleParameter(GetFullParmName("AbortEventIfPrimaryEnergyLossExceeds"), "Energy");
     fMaximumTrackLength = fPm->GetDoubleParameter(GetFullParmName("KillPrimaryBasedOnTrackLength"), "Length");
     
+    fFollowChargeExchange = false;
+    if (fPm->ParameterExists(GetFullParmName("FollowChargeExchangeOfPrimary")))
+        fFollowChargeExchange = fPm->GetBooleanParameter(GetFullParmName("FollowChargeExchangeOfPrimary"));
+
     fNbOfMoleculesToScavenge = -1;
     if (fPm->ParameterExists(GetFullParmName("ScavengeTheseMolecules")) )  {
         fNbOfMoleculesToScavenge = fPm->GetVectorLength(GetFullParmName("ScavengeTheseMolecules"));
@@ -82,7 +88,17 @@ G4bool TsSBSScoreGValue::ProcessHits(G4Step* aStep, G4TouchableHistory*)
     
     G4Track* aTrack = aStep->GetTrack();
     if ( -1 < aTrack->GetTrackID()) {
-        if ( aTrack->GetParentID() == 0 ) {
+        G4bool isPrimary = ( aTrack->GetParentID() == 0 );
+        if ( fFollowChargeExchange ) {
+            if ( isPrimary ) fPrimaryLineage.insert(aTrack->GetTrackID());
+            else if ( fPrimaryLineage.count(aTrack->GetParentID()) > 0 && aTrack->GetCreatorProcess() != nullptr
+                      && strstr(aTrack->GetCreatorProcess()->GetProcessName(), "Charge") != nullptr ) {
+                fPrimaryLineage.insert(aTrack->GetTrackID());
+                isPrimary = true;
+            }
+            else isPrimary = fPrimaryLineage.count(aTrack->GetTrackID()) > 0;
+        }
+        if ( isPrimary ) {
             G4double kineticE = aStep->GetPostStepPoint()->GetKineticEnergy();
             G4double eLoss = aStep->GetPreStepPoint()->GetKineticEnergy() - kineticE;
             fEnergyLoss += eLoss;
@@ -171,6 +187,7 @@ void TsSBSScoreGValue::UserHookForEndOfEvent() {
     fTotalTrackLength = 0.0;
     fEnergyDepositPerEvent = 0.0;
     fEnergyLoss = 0.0;
+    fPrimaryLineage.clear();
     G4MoleculeCounter::Instance()->ResetCounter();
     
 }
