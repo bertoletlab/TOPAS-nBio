@@ -73,6 +73,7 @@ private:
     std::vector<std::string> fUnappliedReactionTypes;
 
     G4bool fSetWaterConfiguration;
+    G4bool fIncludeOxygenSpecies;
 
     // Ionisation Branching ratio
     G4double fIonizationStates;

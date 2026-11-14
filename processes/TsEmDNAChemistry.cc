@@ -64,6 +64,8 @@
 #include "G4Electron_aq.hh"
 #include "G4H2O2.hh"
 #include "G4Oxygen.hh"
+#include "G4O2.hh"
+#include "G4HO2.hh"
 #include "TsScavengerProduct.hh"
 
 #include "G4PhysicsListHelper.hh"
@@ -130,6 +132,23 @@ void TsEmDNAChemistry::DefineParameters()
     fName = "Default";
     if ( fPm->ParameterExists("Ch/ChemistryName") )
         fName = fPm->GetStringParameter("Ch/ChemistryName");
+
+    // Optional oxygen family (O2, O2-, HO2, HO2-) for step-by-step chemistry. Off by default, so a deck that does not set
+    // the parameter builds the same molecule table as before. The diffusion coefficients are the values of the fork's
+    // TsIRTConfiguration table (uncited there); a deck's DiffusionCoefficients lines overwrite them below.
+    fIncludeOxygenSpecies = false;
+    if ( fPm->ParameterExists(GetFullParmName("IncludeOxygenSpecies")) )
+        fIncludeOxygenSpecies = fPm->GetBooleanParameter(GetFullParmName("IncludeOxygenSpecies"));
+    if ( fIncludeOxygenSpecies ) {
+        fExistingMolecules["oxygen"]          = "O2";
+        fExistingMolecules["superoxideanion"] = "O2m";
+        fExistingMolecules["hydroperoxy"]     = "HO2";
+        fExistingMolecules["dioxidanide"]     = "HO2m";
+        fDiffusionCoefficients["O2"]   = 2.4e9*nm*nm/s;
+        fDiffusionCoefficients["O2m"]  = 1.75e9*nm*nm/s;
+        fDiffusionCoefficients["HO2"]  = 2.3e9*nm*nm/s;
+        fDiffusionCoefficients["HO2m"] = 1.4e9*nm*nm/s;
+    }
     
     // Re-set diffusion coefficients
     if ( fPm->ParameterExists(GetFullParmName("DiffusionCoefficients/Molecules")) ) {
@@ -526,6 +545,20 @@ void TsEmDNAChemistry::ConstructMolecule()
     G4MoleculeTable::Instance()->CreateConfiguration("e_aq", G4Electron_aq::Definition());
     G4MoleculeTable::Instance()->CreateConfiguration("H3Op", G4H3O::Definition());
     
+    if ( fIncludeOxygenSpecies ) {
+        G4O2::Definition();
+        G4HO2::Definition();
+        G4MoleculeTable* table = G4MoleculeTable::Instance();
+        table->CreateConfiguration("O2",   G4O2::Definition());
+        table->CreateConfiguration("O2m",  G4O2::Definition(),  -1, 1.75e-9*(m2/s));
+        table->CreateConfiguration("HO2",  G4HO2::Definition());
+        table->CreateConfiguration("HO2m", G4HO2::Definition(), -1, 1.4e-9*(m2/s));
+        table->GetConfiguration("O2")->SetVanDerVaalsRadius(0.17*nm);
+        table->GetConfiguration("O2m")->SetVanDerVaalsRadius(0.22*nm);
+        table->GetConfiguration("HO2")->SetVanDerVaalsRadius(0.21*nm);
+        table->GetConfiguration("HO2m")->SetVanDerVaalsRadius(0.25*nm);
+    }
+
     G4MoleculeTable::Instance()->CreateConfiguration("Oxy", G4Oxygen::Definition());
     G4MoleculeTable::Instance()->GetConfiguration("Oxy")->SetVanDerVaalsRadius(0.20*nm);
 
@@ -875,6 +908,12 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
     reactions["H"]     = H;
     reactions["H2O2"]  = H2O2;
     reactions["Oxy"] = Oxy;
+    
+    if ( fIncludeOxygenSpecies ) {
+        const char* oxygenFamily[] = {"O2", "O2m", "HO2", "HO2m"};
+        for ( const char* n : oxygenFamily )
+            reactions[n] = G4MoleculeTable::Instance()->GetConfiguration(n);
+    }
     
     if ( fSetWaterConfiguration ) {
         G4MolecularConfiguration* H2O = G4MoleculeTable::Instance()->GetConfiguration("H2O");
