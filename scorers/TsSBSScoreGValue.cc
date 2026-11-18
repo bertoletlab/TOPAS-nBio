@@ -217,7 +217,7 @@ void TsSBSScoreGValue::UserHookForEndOfEvent() {
 
         if ( fSplitByLineage ) {
             TsLineageRegistry& reg = TsLineageRegistry::Get();
-            G4double tcheck[2] = {20.e3, 100.e3};   // ps: 20 ns and 100 ns
+            G4double tcheck[2] = {20. * ns, 100. * ns};   // Geant4 internal time unit is ns
             G4int capT[2][6], capEnd[6];
             for (int i = 0; i < 6; i++) { capT[0][i] = capT[1][i] = capEnd[i] = 0; }
             for ( auto& tc : reg.captured ) { capEnd[tc.second]++; for (int k = 0; k < 2; k++) if (tc.first <= tcheck[k]) capT[k][tc.second]++; }
