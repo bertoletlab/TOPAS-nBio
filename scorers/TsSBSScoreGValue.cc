@@ -21,6 +21,8 @@
 #include "G4MolecularConfiguration.hh"
 #include "G4Molecule.hh"
 #include "G4H2O.hh"
+#include "G4OH.hh"
+#include "TsLineageRegistry.hh"
 
 TsSBSScoreGValue::TsSBSScoreGValue(TsParameterManager* pM, TsMaterialManager* mM, TsGeometryManager* gM, TsScoringManager* scM, TsExtensionManager* eM,
                              G4String scorerName, G4String quantity, G4String outFileName, G4bool isSubScorer)
@@ -72,7 +74,18 @@ fPm(pM), fEnergyDepositPerEvent(0), fSumEnergy(0), fSumEnergy2(0)
     fNbOfScoredEvents = 0;
     fEnergyLoss = 0.0;
     fTotalTrackLength = 0.0;
-    
+
+    fSplitByLineage = false;
+    if (fPm->ParameterExists(GetFullParmName("SplitByLineage")))
+        fSplitByLineage = fPm->GetBooleanParameter(GetFullParmName("SplitByLineage"));
+    for (int i = 0; i < 6; i++) { fEdepByClass[i] = 0.; fOHInitByClass[i] = 0; fEdepByRad[i] = 0.; fOHInitByRad[i] = 0; }
+    if (fSplitByLineage && G4Threading::IsWorkerThread()) {
+        TsLineageRegistry::Get().active = true;
+        if (fPm->ParameterExists(GetFullParmName("LineageThresholds"))) {
+            G4double* th = fPm->GetDoubleVector(GetFullParmName("LineageThresholds"), "Energy");
+            TsLineageRegistry::Get().t1 = th[0]; TsLineageRegistry::Get().t2 = th[1]; TsLineageRegistry::Get().t3 = th[2];
+        }
+    }
 }
 
 TsSBSScoreGValue::~TsSBSScoreGValue()
@@ -122,11 +135,33 @@ G4bool TsSBSScoreGValue::ProcessHits(G4Step* aStep, G4TouchableHistory*)
         }
         
         G4double edep = aStep->GetTotalEnergyDeposit();
+        if ( fSplitByLineage ) {
+            TsLineageRegistry& reg = TsLineageRegistry::Get();
+            if ( isPrimary ) {
+                reg.SetIon(aTrack->GetTrackID());
+                reg.SetAxis(aStep->GetPreStepPoint()->GetPosition(), aStep->GetPreStepPoint()->GetMomentumDirection());
+            }
+            G4int c = reg.ClassOf(aTrack);
+            if ( edep > 0 ) {
+                fEdepByClass[c] += edep * aStep->GetPreStepPoint()->GetWeight();
+                fEdepByRad[reg.RadialBin(aStep->GetPostStepPoint()->GetPosition())] += edep * aStep->GetPreStepPoint()->GetWeight();
+            }
+        }
         if ( edep > 0 ) {
             fEnergyDepositPerEvent += edep * aStep->GetPreStepPoint()->GetWeight();
             return true;
         }
     } else {
+        if ( fSplitByLineage ) {
+            TsLineageRegistry& reg = TsLineageRegistry::Get();
+            G4int id = aTrack->GetTrackID();
+            if ( reg.radCls.find(id) == reg.radCls.end() ) {
+                G4int rb = reg.RadialBin(aStep->GetPreStepPoint()->GetPosition());
+                reg.radCls[id] = rb;
+                G4Molecule* mol = GetMolecule(aTrack);
+                if ( mol && mol->GetDefinition() == G4OH::Definition() ) fOHInitByRad[rb]++;
+            }
+        }
         if ( 0 < fNbOfMoleculesToScavenge ) {
             G4Molecule* molecule = GetMolecule(aTrack);
             G4int moleculeID = molecule->GetMoleculeID();
@@ -180,6 +215,28 @@ void TsSBSScoreGValue::UserHookForEndOfEvent() {
             molecule_it++;
         }
 
+        if ( fSplitByLineage ) {
+            TsLineageRegistry& reg = TsLineageRegistry::Get();
+            G4double tcheck[2] = {20.e3, 100.e3};   // ps: 20 ns and 100 ns
+            G4int capT[2][6], capEnd[6];
+            for (int i = 0; i < 6; i++) { capT[0][i] = capT[1][i] = capEnd[i] = 0; }
+            for ( auto& tc : reg.captured ) { capEnd[tc.second]++; for (int k = 0; k < 2; k++) if (tc.first <= tcheck[k]) capT[k][tc.second]++; }
+            std::cout << "LINEAGE event " << GetEventID() << " edep_eV";
+            for (int i = 0; i < 6; i++) std::cout << " " << fEdepByClass[i] / eV;
+            std::cout << std::endl;
+            std::cout << "RADIAL event " << GetEventID() << " edep_eV";
+            for (int i = 0; i < 6; i++) std::cout << " " << fEdepByRad[i] / eV;
+            std::cout << " ohinit";
+            for (int i = 0; i < 6; i++) std::cout << " " << fOHInitByRad[i];
+            std::cout << " ohcap20ns";
+            for (int i = 0; i < 6; i++) std::cout << " " << capT[0][i];
+            std::cout << " ohcap100ns";
+            for (int i = 0; i < 6; i++) std::cout << " " << capT[1][i];
+            std::cout << " ohcapend";
+            for (int i = 0; i < 6; i++) std::cout << " " << capEnd[i];
+            std::cout << std::endl;
+        }
+
         fSumEnergy += energyInEV;
         fSumEnergy2 += energyInEV * energyInEV;
         fNbOfScoredEvents++;
@@ -188,6 +245,10 @@ void TsSBSScoreGValue::UserHookForEndOfEvent() {
     fEnergyDepositPerEvent = 0.0;
     fEnergyLoss = 0.0;
     fPrimaryLineage.clear();
+    if ( fSplitByLineage ) {
+        TsLineageRegistry::Get().Clear();
+        for (int i = 0; i < 6; i++) { fEdepByClass[i] = 0.; fOHInitByClass[i] = 0; fEdepByRad[i] = 0.; fOHInitByRad[i] = 0; }
+    }
     G4MoleculeCounter::Instance()->ResetCounter();
     
 }

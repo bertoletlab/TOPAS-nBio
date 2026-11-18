@@ -14,6 +14,7 @@
 #include "G4DNADamage.hh"
 #include "G4EventManager.hh"
 #include "G4Event.hh"
+#include "TsLineageRegistry.hh"
 
 #ifndef State
 #define State(theXInfo) (GetState<FirstOrderReactionState>()->theXInfo)
@@ -190,6 +191,8 @@ G4VParticleChange* TsDNAFirstOrderReaction::PostStepDoIt(const G4Track& track,co
             // replaces was reaching for: a track would be pushed to the molecule finder, then
             // diffuse and react. The scavenger product is meant to be inert. Counting it costs
             // nothing and changes no dynamics.
+            if ( TsLineageRegistry::Get().active )
+                TsLineageRegistry::Get().captured.push_back(std::make_pair(track.GetGlobalTime(), TsLineageRegistry::Get().RadialClassOfMolecule(track.GetTrackID())));
             if ( G4VMoleculeCounter::Instance()->InUse() )
                 G4VMoleculeCounter::Instance()->AddAMoleculeAtTime(
                     fpProductsMolecularConfiguration[u], track.GetGlobalTime(),

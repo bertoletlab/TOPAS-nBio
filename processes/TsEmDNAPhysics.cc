@@ -174,6 +174,17 @@ void TsEmDNAPhysics::ConstructProcess()
     if (fPm->ParameterExists("Ph/"+fName+"/PhysicsForGold/Active"))
         isGoldPLActive = fPm->GetBooleanParameter("Ph/"+fName+"/PhysicsForGold/Active");
         
+    // Ionisation model of the light ions (alpha, alpha+, helium): "RuddExtended" (default, the model of G4EmDNAPhysics_option2) or "Rudd"
+    // (G4DNARuddIonisationModel, the model of the other Geant4-DNA options, see G4EmDNABuilder::ConstructDNALightIonPhysics).
+    G4String lightIonIonModel = "ruddextended";
+    if ( fPm->ParameterExists("Ph/"+fName+"/LightIon/SetIonisationModel") )
+        lightIonIonModel = fPm->GetStringParameter("Ph/"+fName+"/LightIon/SetIonisationModel");
+    G4StrUtil::to_lower(lightIonIonModel);
+    auto makeLightIonIonModel = [&]() -> G4VEmModel* {
+        if ( lightIonIonModel == "rudd" ) return new G4DNARuddIonisationModel();
+        return new G4DNARuddIonisationExtendedModel();
+    };
+
     auto myParticleIterator=GetParticleIterator();
     myParticleIterator->reset();
     
@@ -643,7 +654,7 @@ void TsEmDNAPhysics::ConstructProcess()
                 
                 ph->RegisterProcess(new G4DNAExcitation("alpha_G4DNAExcitation"), particle);
                 G4DNAIonisation* theDNAIonisationProcess = new G4DNAIonisation("alpha_G4DNAIonisation");
-                theDNAIonisationProcess->SetEmModel(new G4DNARuddIonisationExtendedModel());
+                theDNAIonisationProcess->SetEmModel(makeLightIonIonModel());
                 ph->RegisterProcess(theDNAIonisationProcess, particle);
                 ph->RegisterProcess(new G4DNAChargeDecrease("alpha_G4DNAChargeDecrease"), particle);
                 
@@ -664,7 +675,7 @@ void TsEmDNAPhysics::ConstructProcess()
                 
                 ph->RegisterProcess(new G4DNAExcitation("alpha+_G4DNAExcitation"), particle);
                 G4DNAIonisation* theDNAIonisationProcess = new G4DNAIonisation("alpha+_G4DNAIonisation");
-                theDNAIonisationProcess->SetEmModel(new G4DNARuddIonisationExtendedModel());
+                theDNAIonisationProcess->SetEmModel(makeLightIonIonModel());
                 ph->RegisterProcess(theDNAIonisationProcess, particle);
                 ph->RegisterProcess(new G4DNAChargeDecrease("alpha+_G4DNAChargeDecrease"), particle);
                 ph->RegisterProcess(new G4DNAChargeIncrease("alpha+_G4DNAChargeIncrease"), particle);
@@ -673,7 +684,7 @@ void TsEmDNAPhysics::ConstructProcess()
                 ph->RegisterProcess(new G4DNAElastic("helium_G4DNAElastic"), particle);
                 ph->RegisterProcess(new G4DNAExcitation("helium_G4DNAExcitation"), particle);
                 G4DNAIonisation* theDNAIonisationProcess = new G4DNAIonisation("helium_G4DNAIonisation");
-                theDNAIonisationProcess->SetEmModel(new G4DNARuddIonisationExtendedModel());
+                theDNAIonisationProcess->SetEmModel(makeLightIonIonModel());
                 ph->RegisterProcess(theDNAIonisationProcess, particle);
                 ph->RegisterProcess(new G4DNAChargeIncrease("helium_G4DNAChargeIncrease"), particle);
             

@@ -73,6 +73,13 @@ private:
     // exchange and the ion runs to rest. With the option the lineage of charge-change continuations counts as the primary.
     G4bool fFollowChargeExchange;
     std::set<G4int> fPrimaryLineage;
+    // Opt-in (SplitByLineage): energy deposited, OH made and OH captured by class of the track lineage, see processes/TsLineageRegistry.hh.
+    // Printed per event as a LINEAGE line in the log; no dynamics change.
+    G4bool fSplitByLineage;
+    G4double fEdepByClass[6];
+    G4int fOHInitByClass[6];
+    G4double fEdepByRad[6];
+    G4int fOHInitByRad[6];
     G4double fEnergyLossKill;
     G4double fEnergyLossAbort;
     G4double fEnergyLoss;
