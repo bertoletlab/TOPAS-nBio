@@ -15,6 +15,8 @@
 #include "G4EventManager.hh"
 #include "G4Event.hh"
 #include "TsLineageRegistry.hh"
+#include "TsScavengerProduct.hh"
+#include "G4MoleculeFinder.hh"
 
 #ifndef State
 #define State(theXInfo) (GetState<FirstOrderReactionState>()->theXInfo)
@@ -31,6 +33,7 @@ void TsDNAFirstOrderReaction::Create() {
     G4VITProcess::SetInstantiateProcessState(false);
     
     fIsInitialized = false;
+    fLiveProducts = false;
     fpMolecularConfiguration = 0;
     
     fProposesTimeStep = true;
@@ -177,6 +180,16 @@ G4VParticleChange* TsDNAFirstOrderReaction::PostStepDoIt(const G4Track& track,co
     fParticleChange.Initialize(track);
     if ( fHasProducts ) {
         for ( size_t u = 0; u < fpProductsMolecularConfiguration.size(); u++ ) {
+            G4MolecularConfiguration* conf = fpProductsMolecularConfiguration[u];
+            if ( fLiveProducts && conf->GetDefinition() != TsScavengerProduct::Definition() ) {
+                // A live product: a molecular track at the place and time of the reaction, counted by G4Molecule::BuildTrack and
+                // removed from the counter when the track ends, as for the products of G4DNAMolecularDissociation.
+                G4Molecule* product = new G4Molecule(conf);
+                G4Track* productTrack = product->BuildTrack(track.GetGlobalTime(), track.GetPosition());
+                productTrack->SetTrackStatus(fAlive);
+                fParticleChange.G4VParticleChange::AddSecondary(productTrack);
+                continue;
+            }
             G4Molecule* product = new G4Molecule(fpProductsMolecularConfiguration[u]);
             G4DNADamage::Instance()->AddIndirectDamage("NULL",product,track.GetPosition(),track.GetGlobalTime());
 

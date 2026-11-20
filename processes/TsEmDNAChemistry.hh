@@ -105,6 +105,8 @@ private:
     std::vector<G4String> fScavengedMolecules;
     std::vector<G4double> fScavengedCapacities;
     std::vector<G4bool> fScavengerHasProducts;
+    std::vector<G4bool> fScavengerLiveProducts;
+    G4bool fIncludeCO2Radical;
     std::vector<std::vector<G4String>> fScavengerProducts;
 	std::vector<G4String> fRemoveInMaterialTheseMolecules;
 	G4String fRemoveInMaterial;

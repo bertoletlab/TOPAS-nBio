@@ -28,6 +28,10 @@ public:
     
     void SetReaction(const G4MolecularConfiguration*, std::vector<G4MolecularConfiguration*>, double /*scavengingCapacity*/);
 
+    // Opt-in (ProductsAreTracks): products other than the counted scavenger product become molecular tracks that diffuse and react;
+    // the scavenger product (TsScavengerProduct) stays a counted, non-reacting species. Default off, byte-identical.
+    void SetLiveProducts(G4bool live) { fLiveProducts = live; }
+
     virtual void BuildPhysicsTable(const G4ParticleDefinition&);
     
     virtual G4double PostStepGetPhysicalInteractionLength(const G4Track& track,
@@ -71,6 +75,7 @@ protected:
     const G4Material* fpMaterial;
     std::vector<G4MolecularConfiguration*> fpProductsMolecularConfiguration;
     G4bool fHasProducts;
+    G4bool fLiveProducts;
 private :
     void Create();
     G4double fScavengingCapacity;

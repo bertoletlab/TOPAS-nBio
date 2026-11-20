@@ -139,6 +139,16 @@ void TsEmDNAChemistry::DefineParameters()
     fIncludeOxygenSpecies = false;
     if ( fPm->ParameterExists(GetFullParmName("IncludeOxygenSpecies")) )
         fIncludeOxygenSpecies = fPm->GetBooleanParameter(GetFullParmName("IncludeOxygenSpecies"));
+    // Optional carbon dioxide radical anion (the formate radical CO2.-, charge -1) for formic-acid boxes; the diffusion coefficient is that of O2.- as a
+    // stand-in (no source read). Off by default, byte-identical.
+    fIncludeCO2Radical = false;
+    if ( fPm->ParameterExists(GetFullParmName("IncludeCO2RadicalAnion")) )
+        fIncludeCO2Radical = fPm->GetBooleanParameter(GetFullParmName("IncludeCO2RadicalAnion"));
+    if ( fIncludeCO2Radical ) {
+        fExistingMolecules["carbondioxideradicalanion"] = "CO2m";
+        fDiffusionCoefficients["CO2m"] = 1.5e9*nm*nm/s;
+    }
+
     if ( fIncludeOxygenSpecies ) {
         fExistingMolecules["oxygen"]          = "O2";
         fExistingMolecules["superoxideanion"] = "O2m";
@@ -286,6 +296,11 @@ void TsEmDNAChemistry::DefineParameters()
         fScavengedCapacities.push_back(scavengingCapacity);
         fScavengerHasProducts.push_back(hasProducts);
         fScavengerProducts.push_back(Products);
+        {
+            // Opt-in: the products of this first-order reaction (other than the counted scavenger product) become molecular tracks
+            G4String live = parName.substr(0,parName.find("Products")-1) + "/ProductsAreTracks";
+            fScavengerLiveProducts.push_back(fPm->ParameterExists(live) && fPm->GetBooleanParameter(live));
+        }
         std::cout << "-- Set scavenging capacity for molecule " << fExistingMolecules[reactorA] <<
                     " of " << scavengingCapacity*s << " /s " << std::endl;
     }
@@ -545,6 +560,12 @@ void TsEmDNAChemistry::ConstructMolecule()
     G4MoleculeTable::Instance()->CreateConfiguration("e_aq", G4Electron_aq::Definition());
     G4MoleculeTable::Instance()->CreateConfiguration("H3Op", G4H3O::Definition());
     
+    if ( fIncludeCO2Radical ) {
+        auto CO2m = new G4MoleculeDefinition("CO2_radical_anion", 44.0095 * g / Avogadro * c_squared, 1.5e-9 * (m * m / s), -1, 0, 0.25 * nm, 3);
+        G4MoleculeTable::Instance()->CreateConfiguration("CO2m", CO2m, -1, 1.5e-9 * (m2 / s));
+        G4MoleculeTable::Instance()->GetConfiguration("CO2m")->SetVanDerVaalsRadius(0.25*nm);
+    }
+
     if ( fIncludeOxygenSpecies ) {
         G4O2::Definition();
         G4HO2::Definition();
@@ -909,6 +930,9 @@ void TsEmDNAChemistry::ConstructReactionTable(G4DNAMolecularReactionTable*
     reactions["H2O2"]  = H2O2;
     reactions["Oxy"] = Oxy;
     
+    if ( fIncludeCO2Radical )
+        reactions["CO2m"] = G4MoleculeTable::Instance()->GetConfiguration("CO2m");
+
     if ( fIncludeOxygenSpecies ) {
         const char* oxygenFamily[] = {"O2", "O2m", "HO2", "HO2m"};
         for ( const char* n : oxygenFamily )
@@ -1096,6 +1120,7 @@ void TsEmDNAChemistry::ConstructProcess()
                         }
                         firstOrd->SetReaction(mC, product, fScavengedCapacities[u]);
                     }
+                    firstOrd->SetLiveProducts(fScavengerLiveProducts[u]);
                     moleculeDef->GetProcessManager()->AddDiscreteProcess(firstOrd);
                 }
             }
