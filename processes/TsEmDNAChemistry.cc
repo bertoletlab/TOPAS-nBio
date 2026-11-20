@@ -133,6 +133,18 @@ void TsEmDNAChemistry::DefineParameters()
     if ( fPm->ParameterExists("Ch/ChemistryName") )
         fName = fPm->GetStringParameter("Ch/ChemistryName");
 
+    // Opt-in scale factors on the pre-chemical displacements (default 1, byte-identical): see TsDNAWaterDissociationDisplacer.hh.
+    {
+        G4double motherScale = 1.0, productScale = 1.0;
+        if ( fPm->ParameterExists(GetFullParmName("MotherDisplacementScale")) )
+            motherScale = fPm->GetUnitlessParameter(GetFullParmName("MotherDisplacementScale"));
+        if ( fPm->ParameterExists(GetFullParmName("ProductDisplacementScale")) )
+            productScale = fPm->GetUnitlessParameter(GetFullParmName("ProductDisplacementScale"));
+        TsDNAWaterDissociationDisplacer::SetDisplacementScales(motherScale, productScale);
+        if ( motherScale != 1.0 || productScale != 1.0 )
+            G4cout << "-- Pre-chemical displacement scales: mother " << motherScale << ", products " << productScale << G4endl;
+    }
+
     // Optional oxygen family (O2, O2-, HO2, HO2-) for step-by-step chemistry. Off by default, so a deck that does not set
     // the parameter builds the same molecule table as before. The diffusion coefficients are the values of the fork's
     // TsIRTConfiguration table (uncited there); a deck's DiffusionCoefficients lines overwrite them below.

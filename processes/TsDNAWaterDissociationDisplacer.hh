@@ -70,6 +70,14 @@ public:
   G4ThreeVector radialDistributionOfElectron() const;
   G4ThreeVector radialDistributionOfProducts(G4double r_rms) const;
   static G4double ElectronProbaDistribution(G4double r);
+
+  // Opt-in scale factors on the RMS displacements applied before dissociation (default 1, byte-identical): the mother molecule displacement of
+  // ionisation and autoionisation (1.24 nm) and the displacements of the products (0.775 nm, and 1.6 nm for the H atoms of the two-H channel). The
+  // thermalisation distance of the electron (radialDistributionOfElectron) is not scaled. Set from TsEmDNAChemistry
+  // (Ch/<name>/MotherDisplacementScale and ProductDisplacementScale).
+  static void SetDisplacementScales(G4double mother, G4double product) { fMotherScale = mother; fProductScale = product; }
+  static G4double fMotherScale;
+  static G4double fProductScale;
   
   G4CT_COUNT_DEF(Ionisation_DissociationDecay)
   G4CT_COUNT_DEF(A1B1_DissociationDecay)

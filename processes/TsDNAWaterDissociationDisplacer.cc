@@ -87,6 +87,9 @@ ke(1.7*eV)
 
 //------------------------------------------------------------------------------
 
+G4double TsDNAWaterDissociationDisplacer::fMotherScale  = 1.0;
+G4double TsDNAWaterDissociationDisplacer::fProductScale = 1.0;
+
 TsDNAWaterDissociationDisplacer::~TsDNAWaterDissociationDisplacer() {;}
 
 //------------------------------------------------------------------------------
@@ -117,6 +120,8 @@ G4ThreeVector TsDNAWaterDissociationDisplacer::GetMotherMoleculeDisplacement(con
             break;    
     }
 
+    RMSMotherMoleculeDisplacement *= fMotherScale;
+
     if (RMSMotherMoleculeDisplacement == 0)
     {
         return G4ThreeVector(0, 0, 0);
@@ -137,10 +142,10 @@ vector<G4ThreeVector> TsDNAWaterDissociationDisplacer::GetProductsDisplacement(c
 
     G4int decayType = pDecayChannel->GetDisplacementType();
 
-    G4double theOHRMSDisplacement = 0.775 * nanometer;
-    G4double theH3OOHDisplacement = 0.775 * nanometer; // significant
-    G4double theOH2Displacement   = 0.775 * nanometer; // not significant at lowLET
-    G4double theHOHDisplacement   = 0.775 * nanometer; // significant at lowLET
+    G4double theOHRMSDisplacement = 0.775 * nanometer * fProductScale;
+    G4double theH3OOHDisplacement = 0.775 * nanometer * fProductScale; // significant
+    G4double theOH2Displacement   = 0.775 * nanometer * fProductScale; // not significant at lowLET
+    G4double theHOHDisplacement   = 0.775 * nanometer * fProductScale; // significant at lowLET
 
     switch (decayType)
     {
@@ -245,7 +250,7 @@ vector<G4ThreeVector> TsDNAWaterDissociationDisplacer::GetProductsDisplacement(c
                     theProductDisplacementVector[i] = G4ThreeVector(0,0,0);
                 } else if(pProduct->GetDefinition() == G4Hydrogen::Definition()){
                     // H
-                    G4double HRMSDisplacement = 1.6 * nanometer;
+                    G4double HRMSDisplacement = 1.6 * nanometer * fProductScale;
 
                     auto HDisplacement = radialDistributionOfProducts(HRMSDisplacement);
 
