@@ -26,6 +26,8 @@
 #include "Randomize.hh"
 #include "G4Timer.hh"
 #include "G4LogicalVolumeStore.hh"
+#include "G4VProcess.hh"
+#include <cstring>
 
 TsScoreWithIRT::TsScoreWithIRT(TsParameterManager* pM, TsMaterialManager* mM, TsGeometryManager* gM, TsScoringManager* scM, TsExtensionManager* eM,
                                G4String scorerName, G4String quantity, G4String outFileName, G4bool isSubScorer)
@@ -68,6 +70,9 @@ fPm(pM), fEnergyDepositPerEvent(0), fSumEnergy(0), fSumEnergy2(0), fEnergyLossKi
     
     fEnergyLossKill  = fPm->GetDoubleParameter(GetFullParmName("KillPrimaryIfEnergyLossExceeds"),"Energy");
     fEnergyLossAbort = fPm->GetDoubleParameter(GetFullParmName("AbortEventIfPrimaryEnergyLossExceeds"),"Energy");
+    fFollowChargeExchange = false;
+    if (fPm->ParameterExists(GetFullParmName("FollowChargeExchangeOfPrimary")))
+        fFollowChargeExchange = fPm->GetBooleanParameter(GetFullParmName("FollowChargeExchangeOfPrimary"));
     fMaximumTrackLength = 1*cm;
     if (fPm->ParameterExists(GetFullParmName("KillPrimaryBasedOnTrackLength")))
         fMaximumTrackLength = fPm->GetDoubleParameter(GetFullParmName("KillPrimaryBasedOnTrackLength"), "Length");
@@ -135,7 +140,18 @@ G4bool TsScoreWithIRT::ProcessHits(G4Step* aStep, G4TouchableHistory*)
     
     if ( -1 < aStep->GetTrack()->GetTrackID() ) {
         
-        if ( aStep->GetTrack()->GetParentID() == 0 ) {
+        G4Track* aTrack = aStep->GetTrack();
+        G4bool isPrimary = ( aTrack->GetParentID() == 0 );
+        if ( fFollowChargeExchange ) {
+            if ( isPrimary ) fPrimaryLineage.insert(aTrack->GetTrackID());
+            else if ( fPrimaryLineage.count(aTrack->GetParentID()) > 0 && aTrack->GetCreatorProcess() != nullptr
+                      && strstr(aTrack->GetCreatorProcess()->GetProcessName(), "Charge") != nullptr ) {
+                fPrimaryLineage.insert(aTrack->GetTrackID());
+                isPrimary = true;
+            }
+            else isPrimary = fPrimaryLineage.count(aTrack->GetTrackID()) > 0;
+        }
+        if ( isPrimary ) {
             ResolveSolid(aStep);
             fVolume = fSolid->GetCubicVolume();
             
@@ -253,6 +269,7 @@ void TsScoreWithIRT::UserHookForEndOfEvent() {
     fEnergyLoss = 0.0;
     fTotalTrackLength = 0.0;
     fNumberOfSteps = 0;
+    fPrimaryLineage.clear();
     fEnergyDepositPlusEnergyKinetic = 0.0;
     fLET = 0.0;
     return;

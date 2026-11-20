@@ -19,6 +19,7 @@
 #include "Randomize.hh"
 
 #include <stdint.h>
+#include <set>
 
 class TsIRTManager;
 
@@ -84,6 +85,10 @@ private:
     G4double fSumEnergy;    // sum of per-event deposited energy, eV
     G4double fSumEnergy2;   // sum of its square
     G4int fNbOfScoredEvents;
+    // Opt-in (FollowChargeExchangeOfPrimary), as in TsSBSScoreGValue: an ion's charge change starts a new track with the primary as parent, so a kill
+    // keyed on ParentID == 0 stops applying at the first exchange. With the option the lineage of charge-change continuations counts as the primary.
+    G4bool fFollowChargeExchange;
+    std::set<G4int> fPrimaryLineage;
     G4double fEnergyLossKill;
     G4double fEnergyLossAbort;
     G4double fEnergyLoss;
