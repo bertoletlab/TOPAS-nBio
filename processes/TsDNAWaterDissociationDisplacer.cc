@@ -78,6 +78,9 @@ G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
 G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
                 DissociativeAttachment)
 
+G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
+                MultipleIonisation_DissociationDecay)
+
 TsDNAWaterDissociationDisplacer::TsDNAWaterDissociationDisplacer():
 G4VMolecularDissociationDisplacer(),
 ke(1.7*eV)
@@ -115,6 +118,10 @@ G4ThreeVector TsDNAWaterDissociationDisplacer::GetMotherMoleculeDisplacement(con
         case DissociativeAttachment:
             RMSMotherMoleculeDisplacement = 0. * nanometer;
             break;    
+        case MultipleIonisation_DissociationDecay:
+            // PLACEHOLDER (feat/multiple-ionisation): the single-ionisation value
+            RMSMotherMoleculeDisplacement = 1.24 * nanometer;
+            break;
     }
 
     if (RMSMotherMoleculeDisplacement == 0)
@@ -292,6 +299,21 @@ vector<G4ThreeVector> TsDNAWaterDissociationDisplacer::GetProductsDisplacement(c
                 if (pProduct->GetDefinition() == G4Electron_aq::Definition()) {
                     theProductDisplacementVector[i] = radialDistributionOfElectron();
                 }
+            }
+            break;
+        }
+        case MultipleIonisation_DissociationDecay:
+        {
+            // PLACEHOLDER (feat/multiple-ionisation): the first product stays at the mother position and every other product is displaced by a Gaussian
+            // draw of RMS 1.20 nm, the fragment separation printed by Gervais et al. 2006 (via Baba 2022 Table 2-2) with no stated meaning (fixed
+            // separation or RMS); the 0.80 nm of H-O+ and the positions of H3O+ and OH formed from H+ and O+ are not represented.
+            if (fVerbose) {
+                G4cout << "MultipleIonisation_DissociationDecay" << G4endl;
+                G4cout << "Channel's name: " << pDecayChannel->GetName() << G4endl;
+            }
+            for (G4int i = 0; i < nbProducts; ++i) {
+                if (i == 0) { theProductDisplacementVector[i] = G4ThreeVector(); }
+                else { theProductDisplacementVector[i] = radialDistributionOfProducts(1.20 * nanometer); }
             }
             break;
         }

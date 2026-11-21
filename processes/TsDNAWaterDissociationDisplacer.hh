@@ -77,6 +77,7 @@ public:
   G4CT_COUNT_DEF(B1A1_DissociationDecay2)
   G4CT_COUNT_DEF(AutoIonisation)
   G4CT_COUNT_DEF(DissociativeAttachment)
+  G4CT_COUNT_DEF(MultipleIonisation_DissociationDecay)   // feat/multiple-ionisation, placeholder displacements
   
 private:
   G4double ke;

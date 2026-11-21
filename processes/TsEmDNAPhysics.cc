@@ -14,6 +14,7 @@
 #include "TsParameterManager.hh"
 
 #include "TsDNARuddIonisationExtendedModel.hh"
+#include "TsDNARuddIonisationExtendedMultiModel.hh"
 #include "TsSplitProcessG4DNA.hh"
 #include "TsDNARuddIonisationExtendedRITRACKSModel.hh"
 #include "TsDNAELSEPAElasticModel.hh"
@@ -180,8 +181,24 @@ void TsEmDNAPhysics::ConstructProcess()
     if ( fPm->ParameterExists("Ph/"+fName+"/LightIon/SetIonisationModel") )
         lightIonIonModel = fPm->GetStringParameter("Ph/"+fName+"/LightIon/SetIonisationModel");
     G4StrUtil::to_lower(lightIonIonModel);
+    // "RuddExtendedMulti" (feat/multiple-ionisation, scaffold): the fork copy of the RuddExtended model with a multiple-ionisation hook, inactive (byte-identical
+    // sampling) unless b:Ph/<name>/MultipleIonisation/Active = "True"; then He2+ (alpha) ions ionise doubly and triply with the weights 1 : alpha : alpha^2 of
+    // Okada et al. 2025, alpha(x) over 0.27 to 5.9 MeV/u only (He+ and He0 off). Ph/<name>/MultipleIonisation/Scale (u, default 1) multiplies alpha and
+    // MaxOrder (i, 2 or 3, default 3) caps the order. Several inputs remain placeholders, see TsDNAMultipleIonisation.hh.
     auto makeLightIonIonModel = [&]() -> G4VEmModel* {
         if ( lightIonIonModel == "rudd" ) return new G4DNARuddIonisationModel();
+        if ( lightIonIonModel == "ruddextendedmulti" ) {
+            auto* model = new TsDNARuddIonisationExtendedMultiModel();
+            TsDNAMultipleIonisation mi;
+            const G4String base = "Ph/" + fName + "/MultipleIonisation/";
+            if ( fPm->ParameterExists(base + "Active") && fPm->GetBooleanParameter(base + "Active") ) {
+                mi.Activate(true);
+                if ( fPm->ParameterExists(base + "Scale") ) mi.SetScale(fPm->GetUnitlessParameter(base + "Scale"));
+                if ( fPm->ParameterExists(base + "MaxOrder") ) mi.SetMaxOrder(fPm->GetIntegerParameter(base + "MaxOrder"));
+            }
+            model->SetMultipleIonisation(mi);
+            return model;
+        }
         return new G4DNARuddIonisationExtendedModel();
     };
 

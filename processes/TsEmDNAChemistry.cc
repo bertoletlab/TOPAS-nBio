@@ -64,6 +64,7 @@
 #include "G4Electron_aq.hh"
 #include "G4H2O2.hh"
 #include "G4Oxygen.hh"
+#include "TsDNAMultipleIonisation.hh"
 #include "G4O2.hh"
 #include "G4HO2.hh"
 #include "TsScavengerProduct.hh"
@@ -144,6 +145,10 @@ void TsEmDNAChemistry::DefineParameters()
     fIncludeCO2Radical = false;
     if ( fPm->ParameterExists(GetFullParmName("IncludeCO2RadicalAnion")) )
         fIncludeCO2Radical = fPm->GetBooleanParameter(GetFullParmName("IncludeCO2RadicalAnion"));
+    // Optional doubly ionised water states (feat/multiple-ionisation, scaffold): registers IonisationDouble_<s1>_<s2> and a placeholder
+    // dissociation channel. Off by default, so a deck that does not set the parameter builds the same molecule table as before.
+    if ( fPm->ParameterExists(GetFullParmName("IncludeMultipleIonisation")) )
+        fIncludeMultipleIonisation = fPm->GetBooleanParameter(GetFullParmName("IncludeMultipleIonisation"));
     if ( fIncludeCO2Radical ) {
         fExistingMolecules["carbondioxideradicalanion"] = "CO2m";
         fDiffusionCoefficients["CO2m"] = 1.5e9*nm*nm/s;
@@ -849,6 +854,50 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     water->NewConfigurationWithElectronOccupancy("Ionisation1", *occ);
     water->AddDecayChannel("Ionisation1", new G4MolecularDissociationChannel(*decCh1));
     
+    //////////////////////////////////////////////////////////
+    //            Multiple ionisation (scaffold)            //
+    //////////////////////////////////////////////////////////
+    if ( fIncludeMultipleIonisation ) {
+        // Channels of Gervais et al. 2006 as used by Baba 2022 (Table 2-2) and Okada et al. 2025 (Table S5), read by Puck (extraction 2026-11-21):
+        //   H2O2+ (55%) H+ + H+ + O(3P)      -> 2 H3O+ + O
+        //   H2O2+ (29%) H+ + OH+             -> 2 H3O+ + O
+        //   H2O2+ (16%) H+ + H + O+          -> 2 H3O+ + H + OH + O
+        //   H2O3+ (100%) H+ + H+ + O+        -> 3 H3O+ + OH + O
+        // The fragment separations (1.20 nm, 0.80 nm for H-O+) have no stated distribution (fixed or RMS), so the displacer uses placeholders.
+        // The states are registered for every set of shells with at most two vacancies per orbital and the K shell excluded.
+        auto addState = [&](const std::vector<G4int>& shells) {
+            const G4String stateName = TsDNAMultipleIonisation::StateName(shells);
+            *occ = *(water->GetGroundStateElectronOccupancy());
+            for ( G4int s : shells ) occ->RemoveElectron(4 - s, 1);
+            water->NewConfigurationWithElectronOccupancy(stateName, *occ);
+            if ( shells.size() == 2 ) {
+                struct Br { const char* label; G4double p; std::vector<G4MolecularConfiguration*> prods; };
+                std::vector<Br> brs = { {"IonisationDouble_HpHpO", 0.55, {H3O, H3O, O}},
+                                        {"IonisationDouble_HpOHp", 0.29, {H3O, H3O, O}},
+                                        {"IonisationDouble_HpHOp", 0.16, {H3O, H3O, H, OH, O}} };
+                for ( auto& b : brs ) {
+                    auto* ch = new G4MolecularDissociationChannel(b.label);
+                    for ( auto* p : b.prods ) ch->AddProduct(p);
+                    ch->SetProbability(b.p);
+                    ch->SetDisplacementType(TsDNAWaterDissociationDisplacer::MultipleIonisation_DissociationDecay);
+                    water->AddDecayChannel(stateName, ch);
+                }
+            } else {
+                auto* ch = new G4MolecularDissociationChannel("IonisationTriple_HpHpOp");
+                for ( auto* p : std::vector<G4MolecularConfiguration*>{H3O, H3O, H3O, OH, O} ) ch->AddProduct(p);
+                ch->SetProbability(1.0);
+                ch->SetDisplacementType(TsDNAWaterDissociationDisplacer::MultipleIonisation_DissociationDecay);
+                water->AddDecayChannel(stateName, ch);
+            }
+        };
+        for ( G4int s1 = 0; s1 < 4; ++s1 )
+            for ( G4int s2 = s1; s2 < 4; ++s2 ) {
+                addState({s1, s2});
+                for ( G4int s3 = s2; s3 < 4; ++s3 )
+                    if ( !(s1 == s2 && s2 == s3) ) addState({s1, s2, s3});
+            }
+    }
+
     //////////////////////////////////////////////////////////
     //            Dissociative Attachment                   //
     //////////////////////////////////////////////////////////
