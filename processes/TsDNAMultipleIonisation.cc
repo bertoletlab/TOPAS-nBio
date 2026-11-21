@@ -5,6 +5,7 @@
 #include "G4DNAChemistryManager.hh"
 #include "G4H2O.hh"
 #include "G4Molecule.hh"
+#include "G4MolecularConfiguration.hh"
 #include "G4MoleculeTable.hh"
 #include "G4ITTrackHolder.hh"
 #include "G4Track.hh"
@@ -75,13 +76,15 @@ G4String TsDNAMultipleIonisation::StateName(std::vector<G4int> shells)
 void TsDNAMultipleIonisation::CreateMultiplyIonisedWater(const G4Track* pIncomingTrack, const std::vector<G4int>& shells)
 {
     if ( !G4DNAChemistryManager::Instance()->IsChemistryActivated() ) return;
-    if ( G4MoleculeTable::Instance()->GetConfiguration(StateName(shells), false) == nullptr ) {
+    auto pH2OMolecule = new G4Molecule(G4H2O::Definition());
+    for ( G4int s : shells ) pH2OMolecule->IonizeMolecule(4 - s);
+    if ( pH2OMolecule->GetMolecularConfiguration()->GetLabel() != StateName(shells) ) {
+        // the registered, named state carries the decay channels; an unnamed configuration would never dissociate
+        delete pH2OMolecule;
         G4Exception("TsDNAMultipleIonisation::CreateMultiplyIonisedWater", "TsMI002", FatalException,
                     "A multiply ionised water state was requested but not registered: set b:Ch/<name>/IncludeMultipleIonisation = \"True\".");
         return;
     }
-    auto pH2OMolecule = new G4Molecule(G4H2O::Definition());
-    for ( G4int s : shells ) pH2OMolecule->IonizeMolecule(4 - s);
 
     G4double delayedTime = 0.;
     if ( pIncomingTrack->GetUserInformation() != nullptr ) {
