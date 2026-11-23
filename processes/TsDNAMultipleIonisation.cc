@@ -53,9 +53,11 @@ G4double TsDNAMultipleIonisation::CrossSectionFactor(const G4String& particle, G
     if ( !fActive ) return 1.;
     const G4double a = Alpha(particle, kineticEnergy);
     if ( a <= 0. ) return 1.;
-    G4double f = 1., w = 1.;
-    for ( G4int n = 2; n <= fMaxOrder; ++n ) { w *= a; f += w; }
-    return f;
+    G4double f = 1., w = 1., q = 1.;     // f = sum of the weights, q = sum of degree times weight
+    for ( G4int n = 2; n <= fMaxOrder; ++n ) { w *= a; f += w; q += n * w; }
+    // MJG05: the multiple cross sections are added to the single one (f). Gervais: one total cross section split among the degrees, so a q-fold event replaces
+    // q singles and the event rate falls by the mean degree (f / q), which keeps the energy loss of the ion close to the uncorrelated value (GER06 p. 497).
+    return (fScheme == Gervais) ? f / q : f;
 }
 
 G4int TsDNAMultipleIonisation::SampleOrder(const G4String& particle, G4double kineticEnergy) const

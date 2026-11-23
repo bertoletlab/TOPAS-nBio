@@ -41,7 +41,8 @@ public:
     // alpha of He2+ (applied to alpha, alpha+ and helium alike, Z = 2) at this kinetic energy: log-log interpolation of the curve of MJG05 Fig. 1; 0 outside
     // x = 0.15 to 2.97 (0.3 to 5.9 MeV/u) and for any other projectile.
     G4double Alpha(const G4String& particle, G4double kineticEnergy) const;
-    // 1 + a + a^2 + a^3 (orders up to MaxOrder, a = Scale alpha): the factor of the ionisation cross section under MJG05; 1 where alpha is 0.
+    // Factor of the ionisation cross section (event rate): MJG05 1 + a + a^2 + a^3 (orders up to MaxOrder, a = Scale alpha, multiples added on top); Gervais the same sum
+    // divided by 1 + 2a + 3a^2 + 4a^3 (a q-fold event replaces q singles); 1 where alpha is 0.
     G4double CrossSectionFactor(const G4String& particle, G4double kineticEnergy) const;
     // Order 1 to MaxOrder of an event, drawn with the weights 1 : a : a^2 : a^3; no random number when inactive or alpha is 0.
     G4int SampleOrder(const G4String& particle, G4double kineticEnergy) const;

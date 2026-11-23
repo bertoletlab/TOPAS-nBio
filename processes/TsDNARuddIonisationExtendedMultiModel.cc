@@ -273,8 +273,8 @@ TsDNARuddIonisationExtendedMultiModel::CrossSectionPerVolume(const G4Material* m
 
   sigma *= density;
 
-  // MJG05 scheme: the double, triple and quadruple cross sections are added to the single one (feat/multiple-ionisation); 1 unless the hook is active
-  if (fMultiIon.IsActive() && fMultiIon.GetScheme() == TsDNAMultipleIonisation::MJG05) {
+  // event rate of the multiple-ionisation schemes (feat/multiple-ionisation): MJG05 adds the multiples, Gervais divides by the mean degree; 1 unless the hook is active
+  if (fMultiIon.IsActive()) {
     sigma *= fMultiIon.CrossSectionFactor(part->GetParticleName(), kinE);
   }
 
