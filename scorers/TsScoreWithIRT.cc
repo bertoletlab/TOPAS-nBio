@@ -9,6 +9,7 @@
 // *                                                                  *
 // ********************************************************************
 
+#include "G4Electron.hh"
 #include "TsScoreWithIRT.hh"
 #include "TsIRTManager.hh"
 
@@ -145,6 +146,7 @@ G4bool TsScoreWithIRT::ProcessHits(G4Step* aStep, G4TouchableHistory*)
         if ( fFollowChargeExchange ) {
             if ( isPrimary ) fPrimaryLineage.insert(aTrack->GetTrackID());
             else if ( fPrimaryLineage.count(aTrack->GetParentID()) > 0 && aTrack->GetCreatorProcess() != nullptr
+                      && aTrack->GetDefinition() != G4Electron::Definition()
                       && strstr(aTrack->GetCreatorProcess()->GetProcessName(), "Charge") != nullptr ) {
                 fPrimaryLineage.insert(aTrack->GetTrackID());
                 isPrimary = true;
