@@ -9,6 +9,7 @@
 // *                                                                  *
 // ********************************************************************
 
+#include "G4Electron.hh"
 #include "TsSBSScoreGValue.hh"
 #include "G4VProcess.hh"
 #include <cstring>
@@ -92,6 +93,7 @@ G4bool TsSBSScoreGValue::ProcessHits(G4Step* aStep, G4TouchableHistory*)
         if ( fFollowChargeExchange ) {
             if ( isPrimary ) fPrimaryLineage.insert(aTrack->GetTrackID());
             else if ( fPrimaryLineage.count(aTrack->GetParentID()) > 0 && aTrack->GetCreatorProcess() != nullptr
+                      && aTrack->GetDefinition() != G4Electron::Definition()
                       && strstr(aTrack->GetCreatorProcess()->GetProcessName(), "Charge") != nullptr ) {
                 fPrimaryLineage.insert(aTrack->GetTrackID());
                 isPrimary = true;
