@@ -182,9 +182,9 @@ void TsEmDNAPhysics::ConstructProcess()
         lightIonIonModel = fPm->GetStringParameter("Ph/"+fName+"/LightIon/SetIonisationModel");
     G4StrUtil::to_lower(lightIonIonModel);
     // "RuddExtendedMulti" (feat/multiple-ionisation, scaffold): the fork copy of the RuddExtended model with a multiple-ionisation hook, inactive (byte-identical
-    // sampling) unless b:Ph/<name>/MultipleIonisation/Active = "True"; then He2+ (alpha) ions ionise doubly and triply with the weights 1 : alpha : alpha^2 of
-    // Okada et al. 2025, alpha(x) over 0.27 to 5.9 MeV/u only (He+ and He0 off). Ph/<name>/MultipleIonisation/Scale (u, default 1) multiplies alpha and
-    // MaxOrder (i, 2 or 3, default 3) caps the order. Several inputs remain placeholders, see TsDNAMultipleIonisation.hh.
+    // sampling) unless b:Ph/<name>/MultipleIonisation/Active = "True"; then helium ions (alpha, alpha+, helium, all as He2+) ionise doubly, triply and quadruply with
+    // the weights 1 : R : R^2 : R^3 of Meesungnoen and Jay-Gerin 2005 over 0.3 to 6 MeV/u. s:.../Scheme = "MJG05" (default) or "Gervais"; Scale (u, default 1) multiplies R;
+    // MaxOrder (i, 2 to 4, default 4). See TsDNAMultipleIonisation.hh.
     auto makeLightIonIonModel = [&]() -> G4VEmModel* {
         if ( lightIonIonModel == "rudd" ) return new G4DNARuddIonisationModel();
         if ( lightIonIonModel == "ruddextendedmulti" ) {
@@ -195,6 +195,10 @@ void TsEmDNAPhysics::ConstructProcess()
                 mi.Activate(true);
                 if ( fPm->ParameterExists(base + "Scale") ) mi.SetScale(fPm->GetUnitlessParameter(base + "Scale"));
                 if ( fPm->ParameterExists(base + "MaxOrder") ) mi.SetMaxOrder(fPm->GetIntegerParameter(base + "MaxOrder"));
+                if ( fPm->ParameterExists(base + "Scheme") ) {
+                    G4String sch = fPm->GetStringParameter(base + "Scheme"); G4StrUtil::to_lower(sch);
+                    mi.SetScheme(sch == "gervais" ? TsDNAMultipleIonisation::Gervais : TsDNAMultipleIonisation::MJG05);
+                }
             }
             model->SetMultipleIonisation(mi);
             return model;

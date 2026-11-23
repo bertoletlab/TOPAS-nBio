@@ -108,6 +108,8 @@ private:
     std::vector<G4bool> fScavengerLiveProducts;
     G4bool fIncludeCO2Radical;
     G4bool fIncludeMultipleIonisation = false;
+    G4String fMultipleIonisationScheme = "mjg05";
+    G4double fMultipleIonisationExcitedO = 0.;
     std::vector<std::vector<G4String>> fScavengerProducts;
 	std::vector<G4String> fRemoveInMaterialTheseMolecules;
 	G4String fRemoveInMaterial;

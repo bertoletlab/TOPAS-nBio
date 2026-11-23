@@ -65,6 +65,8 @@
 #include "G4H2O2.hh"
 #include "G4Oxygen.hh"
 #include "TsDNAMultipleIonisation.hh"
+#include <algorithm>
+#include <cctype>
 #include "G4O2.hh"
 #include "G4HO2.hh"
 #include "TsScavengerProduct.hh"
@@ -149,6 +151,12 @@ void TsEmDNAChemistry::DefineParameters()
     // dissociation channel. Off by default, so a deck that does not set the parameter builds the same molecule table as before.
     if ( fPm->ParameterExists(GetFullParmName("IncludeMultipleIonisation")) )
         fIncludeMultipleIonisation = fPm->GetBooleanParameter(GetFullParmName("IncludeMultipleIonisation"));
+    if ( fPm->ParameterExists(GetFullParmName("MultipleIonisationScheme")) ) {
+        fMultipleIonisationScheme = fPm->GetStringParameter(GetFullParmName("MultipleIonisationScheme"));
+        std::transform(fMultipleIonisationScheme.begin(), fMultipleIonisationScheme.end(), fMultipleIonisationScheme.begin(), [](unsigned char ch) { return std::tolower(ch); });
+    }
+    if ( fPm->ParameterExists(GetFullParmName("MultipleIonisationExcitedOFraction")) )
+        fMultipleIonisationExcitedO = fPm->GetUnitlessParameter(GetFullParmName("MultipleIonisationExcitedOFraction"));
     if ( fIncludeCO2Radical ) {
         fExistingMolecules["carbondioxideradicalanion"] = "CO2m";
         fDiffusionCoefficients["CO2m"] = 1.5e9*nm*nm/s;
@@ -855,47 +863,61 @@ void TsEmDNAChemistry::ConstructDissociationChannels()
     water->AddDecayChannel("Ionisation1", new G4MolecularDissociationChannel(*decCh1));
     
     //////////////////////////////////////////////////////////
-    //            Multiple ionisation (scaffold)            //
+    //            Multiple ionisation                       //
     //////////////////////////////////////////////////////////
     if ( fIncludeMultipleIonisation ) {
-        // Channels of Gervais et al. 2006 as used by Baba 2022 (Table 2-2) and Okada et al. 2025 (Table S5), read by Puck (extraction 2026-11-21):
-        //   H2O2+ (55%) H+ + H+ + O(3P)      -> 2 H3O+ + O
-        //   H2O2+ (29%) H+ + OH+             -> 2 H3O+ + O
-        //   H2O2+ (16%) H+ + H + O+          -> 2 H3O+ + H + OH + O
-        //   H2O3+ (100%) H+ + H+ + O+        -> 3 H3O+ + OH + O
-        // The fragment separations (1.20 nm, 0.80 nm for H-O+) have no stated distribution (fixed or RMS), so the displacer uses placeholders.
-        // The states are registered for every set of shells with at most two vacancies per orbital and the K shell excluded.
-        auto addState = [&](const std::vector<G4int>& shells) {
-            const G4String stateName = TsDNAMultipleIonisation::StateName(shells);
+        // States IonisationMulti_<order> (holes in orbits 4, 4, 3, 3) and the channels of the chosen scheme (s:Ch/<name>/MultipleIonisationScheme):
+        //  MJG05 (Meesungnoen and Jay-Gerin 2005 p. 6408, R1, R3, R4; 100 percent O(3P)):
+        //     H2O2+ -> 2 H3O+ + O;  H2O3+ -> 3 H3O+ + HO2;  H2O4+ -> 4 H3O+ + O2
+        //  Gervais (Gervais et al. 2006 p. 502, Table 4; X is O(3P), or H2O2 for the fraction u:Ch/<name>/MultipleIonisationExcitedOFraction of the oxygen atoms,
+        //  85 percent in their paper, default 0 here):
+        //     H2O2+ 55 percent H+ + H+ + O -> 2 H3O+ + X;  29 percent H+ + OH+ -> 2 H3O+ + X;  16 percent H+ + H + O+ -> 2 H3O+ + H + OH + X
+        //     H2O3+ -> 3 H3O+ + OH + X;  H2O4+ -> 4 H3O+ + 2 OH + X
+        // The placements are in TsDNAWaterDissociationDisplacer.
+        G4MolecularConfiguration* H2O2cfg = G4MoleculeTable::Instance()->GetConfiguration("H2O2");
+        G4MolecularConfiguration* HO2cfg = nullptr; G4MolecularConfiguration* O2cfg = nullptr;
+        if ( fIncludeOxygenSpecies ) {
+            HO2cfg = G4MoleculeTable::Instance()->GetConfiguration("HO2");
+            O2cfg  = G4MoleculeTable::Instance()->GetConfiguration("O2");
+        }
+        const G4bool mjg = (fMultipleIonisationScheme != "gervais");
+        if ( mjg && !fIncludeOxygenSpecies )
+            G4Exception("TsEmDNAChemistry::ConstructDissociationChannels", "TsMI003", FatalException,
+                        "The MJG05 channels of triple and quadruple ionisation make HO2 and O2: set b:Ch/<name>/IncludeOxygenSpecies = \"True\".");
+        const G4double fEx = fMultipleIonisationExcitedO;
+        const G4int orbits[4] = {4, 4, 3, 3};
+        for ( G4int order = 2; order <= 4; ++order ) {
+            const G4String stateName = TsDNAMultipleIonisation::StateName(order);
             *occ = *(water->GetGroundStateElectronOccupancy());
-            for ( G4int s : shells ) occ->RemoveElectron(4 - s, 1);
+            for ( G4int k = 0; k < order; ++k ) occ->RemoveElectron(orbits[k], 1);
             water->NewConfigurationWithElectronOccupancy(stateName, *occ);
-            if ( shells.size() == 2 ) {
-                struct Br { const char* label; G4double p; std::vector<G4MolecularConfiguration*> prods; };
-                std::vector<Br> brs = { {"IonisationDouble_HpHpO", 0.55, {H3O, H3O, O}},
-                                        {"IonisationDouble_HpOHp", 0.29, {H3O, H3O, O}},
-                                        {"IonisationDouble_HpHOp", 0.16, {H3O, H3O, H, OH, O}} };
-                for ( auto& b : brs ) {
-                    auto* ch = new G4MolecularDissociationChannel(b.label);
-                    for ( auto* p : b.prods ) ch->AddProduct(p);
-                    ch->SetProbability(b.p);
-                    ch->SetDisplacementType(TsDNAWaterDissociationDisplacer::MultipleIonisation_DissociationDecay);
-                    water->AddDecayChannel(stateName, ch);
-                }
-            } else {
-                auto* ch = new G4MolecularDissociationChannel("IonisationTriple_HpHpOp");
-                for ( auto* p : std::vector<G4MolecularConfiguration*>{H3O, H3O, H3O, OH, O} ) ch->AddProduct(p);
-                ch->SetProbability(1.0);
-                ch->SetDisplacementType(TsDNAWaterDissociationDisplacer::MultipleIonisation_DissociationDecay);
+            auto add = [&](const char* label, G4double p, const std::vector<G4MolecularConfiguration*>& prods, G4int type) {
+                if ( p <= 0. ) return;
+                auto* ch = new G4MolecularDissociationChannel(label);
+                for ( auto* q : prods ) ch->AddProduct(q);
+                ch->SetProbability(p);
+                ch->SetDisplacementType(type);
                 water->AddDecayChannel(stateName, ch);
+            };
+            if ( mjg ) {
+                const G4int t = TsDNAWaterDissociationDisplacer::MJG05_MultipleIonisation;
+                if ( order == 2 ) add("MJG05_Double", 1.0, {O, H3O, H3O}, t);
+                if ( order == 3 ) add("MJG05_Triple", 1.0, {HO2cfg, H3O, H3O, H3O}, t);
+                if ( order == 4 ) add("MJG05_Quadruple", 1.0, {O2cfg, H3O, H3O, H3O, H3O}, t);
+            } else {
+                for ( int v = 0; v < 2; ++v ) {          // v = 0: O(3P), v = 1: excited O forming H2O2
+                    G4MolecularConfiguration* X = (v == 0) ? O : H2O2cfg;
+                    const G4double w = (v == 0) ? 1. - fEx : fEx;
+                    if ( order == 2 ) {
+                        add(v == 0 ? "Gervais_Double55_O" : "Gervais_Double55_H2O2", 0.55 * w, {X, H3O, H3O}, TsDNAWaterDissociationDisplacer::Gervais_Double55);
+                        add(v == 0 ? "Gervais_Double29_O" : "Gervais_Double29_H2O2", 0.29 * w, {X, H3O, H3O}, TsDNAWaterDissociationDisplacer::Gervais_Double29);
+                        add(v == 0 ? "Gervais_Double16_O" : "Gervais_Double16_H2O2", 0.16 * w, {X, H3O, H, H3O, OH}, TsDNAWaterDissociationDisplacer::Gervais_Double16);
+                    }
+                    if ( order == 3 ) add(v == 0 ? "Gervais_Triple_O" : "Gervais_Triple_H2O2", w, {X, H3O, H3O, H3O, OH}, TsDNAWaterDissociationDisplacer::Gervais_Triple);
+                    if ( order == 4 ) add(v == 0 ? "Gervais_Quadruple_O" : "Gervais_Quadruple_H2O2", w, {X, H3O, H3O, H3O, H3O, OH, OH}, TsDNAWaterDissociationDisplacer::Gervais_Quadruple);
+                }
             }
-        };
-        for ( G4int s1 = 0; s1 < 4; ++s1 )
-            for ( G4int s2 = s1; s2 < 4; ++s2 ) {
-                addState({s1, s2});
-                for ( G4int s3 = s2; s3 < 4; ++s3 )
-                    if ( !(s1 == s2 && s2 == s3) ) addState({s1, s2, s3});
-            }
+        }
     }
 
     //////////////////////////////////////////////////////////

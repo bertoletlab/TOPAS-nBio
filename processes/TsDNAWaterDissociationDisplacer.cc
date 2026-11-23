@@ -79,7 +79,23 @@ G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
                 DissociativeAttachment)
 
 G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
-                MultipleIonisation_DissociationDecay)
+                MJG05_MultipleIonisation)
+
+G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
+                Gervais_Double55)
+
+G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
+                Gervais_Double29)
+
+G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
+                Gervais_Double16)
+
+G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
+                Gervais_Triple)
+
+G4CT_COUNT_IMPL(TsDNAWaterDissociationDisplacer,
+                Gervais_Quadruple)
+
 
 TsDNAWaterDissociationDisplacer::TsDNAWaterDissociationDisplacer():
 G4VMolecularDissociationDisplacer(),
@@ -118,9 +134,14 @@ G4ThreeVector TsDNAWaterDissociationDisplacer::GetMotherMoleculeDisplacement(con
         case DissociativeAttachment:
             RMSMotherMoleculeDisplacement = 0. * nanometer;
             break;    
-        case MultipleIonisation_DissociationDecay:
-            // PLACEHOLDER (feat/multiple-ionisation): the single-ionisation value
-            RMSMotherMoleculeDisplacement = 1.24 * nanometer;
+        case MJG05_MultipleIonisation:
+        case Gervais_Double55:
+        case Gervais_Double29:
+        case Gervais_Double16:
+        case Gervais_Triple:
+        case Gervais_Quadruple:
+            // fragments are placed relative to the site by the products displacement below; the mother stays on the site
+            RMSMotherMoleculeDisplacement = 0. * nanometer;
             break;
     }
 
@@ -302,18 +323,56 @@ vector<G4ThreeVector> TsDNAWaterDissociationDisplacer::GetProductsDisplacement(c
             }
             break;
         }
-        case MultipleIonisation_DissociationDecay:
+        case MJG05_MultipleIonisation:
+        case Gervais_Double55:
+        case Gervais_Double29:
+        case Gervais_Double16:
+        case Gervais_Triple:
+        case Gervais_Quadruple:
         {
-            // PLACEHOLDER (feat/multiple-ionisation): the first product stays at the mother position and every other product is displaced by a Gaussian
-            // draw of RMS 1.20 nm, the fragment separation printed by Gervais et al. 2006 (via Baba 2022 Table 2-2) with no stated meaning (fixed
-            // separation or RMS); the 0.80 nm of H-O+ and the positions of H3O+ and OH formed from H+ and O+ are not represented.
+            // Fixed separations (neither source states a distribution; isotropic placement assumed), product order as registered in TsEmDNAChemistry:
+            //  MJG05  {X, H3O+, H3O+, [H3O+, [H3O+]]}: the co-product X (O, HO2 or O2) stays on the site, each H3O+ is 0.3 nm from it
+            //         (Meesungnoen and Jay-Gerin 2005 p. 6408).
+            //  Gervais (Gervais et al. 2006 p. 502, Table 4; X = O or H2O2 at the site):
+            //   Double55 {X, H3O+, H3O+}             both protons at 1.20 nm
+            //   Double29 {X, H3O+, H3O+}             first proton at 1.20 nm, second at 0.3 nm from O
+            //   Double16 {X, H3O+, H, H3O+, OH}      proton 1.20 nm, H atom 0.80 nm, an H2O+ 0.3 nm from O that forms H3O+ + OH like a single ionisation
+            //   Triple   {X, H3O+, H3O+, H3O+, OH}   two protons 1.20 nm, one H2O+ at 0.3 nm
+            //   Quadruple {X, H3O+ x4, OH x2}        two protons 1.20 nm, two H2O+ at 0.3 nm
+            // A hole pair (H2O+ -> H3O+ + OH) takes the single-ionisation displacement: H3O+ at the hole, OH 0.775 nm RMS from it.
+            const G4double d03 = 0.3 * nanometer, d12 = 1.20 * nanometer, d08 = 0.80 * nanometer;
+            auto fixedAt = [](G4double d) { return G4RandomDirection() * d; };
             if (fVerbose) {
-                G4cout << "MultipleIonisation_DissociationDecay" << G4endl;
+                G4cout << "Multiple ionisation decay type " << decayType << G4endl;
                 G4cout << "Channel's name: " << pDecayChannel->GetName() << G4endl;
             }
-            for (G4int i = 0; i < nbProducts; ++i) {
-                if (i == 0) { theProductDisplacementVector[i] = G4ThreeVector(); }
-                else { theProductDisplacementVector[i] = radialDistributionOfProducts(1.20 * nanometer); }
+            if (decayType == MJG05_MultipleIonisation) {
+                for (G4int i = 1; i < nbProducts; ++i) theProductDisplacementVector[i] = fixedAt(d03);
+            } else if (decayType == Gervais_Double55) {
+                for (G4int i = 1; i < nbProducts; ++i) theProductDisplacementVector[i] = fixedAt(d12);
+            } else if (decayType == Gervais_Double29) {
+                theProductDisplacementVector[1] = fixedAt(d12);
+                theProductDisplacementVector[2] = fixedAt(d03);
+            } else if (decayType == Gervais_Double16) {
+                theProductDisplacementVector[1] = fixedAt(d12);
+                theProductDisplacementVector[2] = fixedAt(d08);
+                G4ThreeVector hole = fixedAt(d03);
+                theProductDisplacementVector[3] = hole;
+                theProductDisplacementVector[4] = hole + radialDistributionOfProducts(theH3OOHDisplacement);
+            } else if (decayType == Gervais_Triple) {
+                theProductDisplacementVector[1] = fixedAt(d12);
+                theProductDisplacementVector[2] = fixedAt(d12);
+                G4ThreeVector hole = fixedAt(d03);
+                theProductDisplacementVector[3] = hole;
+                theProductDisplacementVector[4] = hole + radialDistributionOfProducts(theH3OOHDisplacement);
+            } else {   // Gervais_Quadruple: {X, H3O, H3O, H3O, H3O, OH, OH}
+                theProductDisplacementVector[1] = fixedAt(d12);
+                theProductDisplacementVector[2] = fixedAt(d12);
+                G4ThreeVector hole1 = fixedAt(d03), hole2 = fixedAt(d03);
+                theProductDisplacementVector[3] = hole1;
+                theProductDisplacementVector[4] = hole2;
+                theProductDisplacementVector[5] = hole1 + radialDistributionOfProducts(theH3OOHDisplacement);
+                theProductDisplacementVector[6] = hole2 + radialDistributionOfProducts(theH3OOHDisplacement);
             }
             break;
         }

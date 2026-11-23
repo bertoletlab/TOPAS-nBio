@@ -77,7 +77,13 @@ public:
   G4CT_COUNT_DEF(B1A1_DissociationDecay2)
   G4CT_COUNT_DEF(AutoIonisation)
   G4CT_COUNT_DEF(DissociativeAttachment)
-  G4CT_COUNT_DEF(MultipleIonisation_DissociationDecay)   // feat/multiple-ionisation, placeholder displacements
+  // feat/multiple-ionisation: fixed separations of the fragments of H2O(n+), MJG05 (Meesungnoen and Jay-Gerin 2005) and Gervais et al. 2006
+  G4CT_COUNT_DEF(MJG05_MultipleIonisation)
+  G4CT_COUNT_DEF(Gervais_Double55)
+  G4CT_COUNT_DEF(Gervais_Double29)
+  G4CT_COUNT_DEF(Gervais_Double16)
+  G4CT_COUNT_DEF(Gervais_Triple)
+  G4CT_COUNT_DEF(Gervais_Quadruple)
   
 private:
   G4double ke;

@@ -273,6 +273,11 @@ TsDNARuddIonisationExtendedMultiModel::CrossSectionPerVolume(const G4Material* m
 
   sigma *= density;
 
+  // MJG05 scheme: the double, triple and quadruple cross sections are added to the single one (feat/multiple-ionisation); 1 unless the hook is active
+  if (fMultiIon.IsActive() && fMultiIon.GetScheme() == TsDNAMultipleIonisation::MJG05) {
+    sigma *= fMultiIon.CrossSectionFactor(part->GetParticleName(), kinE);
+  }
+
   if (verbose > 1) {
     G4cout << "TsDNARuddIonisationExtendedMultiModel for " << part->GetParticleName() 
            << " Ekin(keV)=" << kinE/CLHEP::keV 
@@ -312,39 +317,58 @@ TsDNARuddIonisationExtendedMultiModel::SampleSecondaries(std::vector<G4DynamicPa
   G4double esec = SampleElectronEnergy(kinE, shell);
   G4double esum = 0.0;
 
-  // --- multiple ionisation hook (feat/multiple-ionisation, SCAFFOLD, default off) ---------------------------------------
+  // --- multiple ionisation hook (feat/multiple-ionisation, default off) -----------------------------------------------------
   // Without Ph/<name>/MultipleIonisation/Active fMultiIon.IsActive() is false and no random number is drawn, so the sampling reproduces
-  // G4DNARuddIonisationExtendedModel exactly. Order 1 (single), 2 or 3 is drawn with the weights 1 : alpha : alpha^2 of the He2+ curve of
-  // Okada et al. 2025 (TsDNAMultipleIonisation::Alpha). PLACEHOLDERS awaiting the literature: the extra vacancies are drawn like the first from
-  // the single-ionisation shell cross sections (K shell excluded), the extra electrons from the single-ionisation sampler at the projectile energy,
-  // and sigma_si is not reduced. A K-shell first vacancy (Auger event) is never made multiple: those events stay as in Geant4. An event whose total
-  // energy transfer stays below the threshold of its order (40 eV double, 65 eV triple), or whose energy balance fails, stays single.
+  // G4DNARuddIonisationExtendedModel exactly (checked with cmp). Order 1 to 4 is drawn with the weights 1 : R : R^2 : R^3 of He2+ (TsDNAMultipleIonisation).
+  //  MJG05: the energy transfer W is drawn from the single-ionisation spectrum under W >= threshold (40, 65, 88 eV); W minus the threshold is shared equally among
+  //         the n electrons and the threshold is deposited locally.
+  //  Gervais: n electrons, each from the single-ionisation spectrum of an orbital drawn like the first, binding energies deposited locally.
+  // A K-shell first vacancy (Auger event) stays single. An event that fails its energy balance (or finds no energy transfer above the threshold) stays single.
   G4int order = 1;
+  G4bool equalShare = false;
+  G4double eachEnergy = 0.0;
   std::vector<G4int> extraShell;
   std::vector<G4double> extraBinding;
   std::vector<G4double> extraEsec;
   if (fMultiIon.IsActive() && shell != 4) {
     order = fMultiIon.SampleOrder(pd->GetParticleName(), kinE);
     if (order > 1) {
-      G4double wTotal = bindingEnergy + esec;
-      G4double used = bindingEnergy + esec;
-      for (G4int n = 1; n < order; ++n) {
-        G4int trial = 4;
-        for (G4int k = 0; k < 20 && trial == 4; ++k) { trial = SelectShell(kinE*fMassRate); }
-        if (trial == 4) { order = 1; break; }
-        const G4double b2 = (useDNAWaterStructure) ? waterStructure.IonisationEnergy(trial) : Bj[trial];
-        const G4double e2 = SampleElectronEnergy(kinE, trial);
-        extraShell.push_back(trial); extraBinding.push_back(b2); extraEsec.push_back(e2);
-        used += b2 + e2; wTotal += b2 + e2;
+      if (fMultiIon.GetScheme() == TsDNAMultipleIonisation::MJG05) {
+        const G4double thr = TsDNAMultipleIonisation::Threshold(order);
+        G4int s = shell; G4double b = bindingEnergy, e = esec;
+        for (G4int k = 0; k < 200 && (b + e < thr || s == 4); ++k) {
+          s = SelectShell(kinE*fMassRate);
+          if (s == 4) { continue; }
+          b = (useDNAWaterStructure) ? waterStructure.IonisationEnergy(s) : Bj[s];
+          e = SampleElectronEnergy(kinE, s);
+        }
+        const G4double W = b + e;
+        if (s == 4 || W < thr || kinE < W) { order = 1; }
+        else {
+          // the first electron takes the shell and the share of the drawn transfer; the threshold is the local deposit
+          shell = s; bindingEnergy = thr;
+          eachEnergy = (W - thr) / order; esec = eachEnergy; equalShare = true;
+        }
+      } else {
+        G4double used = bindingEnergy + esec;
+        for (G4int n = 1; n < order; ++n) {
+          G4int trial = 4;
+          for (G4int k = 0; k < 20 && trial == 4; ++k) { trial = SelectShell(kinE*fMassRate); }
+          if (trial == 4) { order = 1; break; }
+          const G4double b2 = (useDNAWaterStructure) ? waterStructure.IonisationEnergy(trial) : Bj[trial];
+          const G4double e2 = SampleElectronEnergy(kinE, trial);
+          extraShell.push_back(trial); extraBinding.push_back(b2); extraEsec.push_back(e2);
+          used += b2 + e2;
+        }
+        if (order > 1 && kinE - used < 0.0) { order = 1; }
+        if (order == 1) { extraShell.clear(); extraBinding.clear(); extraEsec.clear(); }
       }
-      if (order == 3 && shell == extraShell[0] && shell == extraShell[1]) { order = 1; }   // three vacancies in one orbital (two electrons) do not exist
-      if (order > 1 && (kinE - used < 0.0 || wTotal < TsDNAMultipleIonisation::Threshold(order))) { order = 1; }
-      if (order == 1) { extraShell.clear(); extraBinding.clear(); extraEsec.clear(); }
     }
   }
   G4double bindingExtra = 0.0;
   G4double esecExtra = 0.0;
   for (std::size_t n = 0; n < extraShell.size(); ++n) { bindingExtra += extraBinding[n]; esecExtra += extraEsec[n]; }
+  if (equalShare) { esecExtra = eachEnergy * (order - 1); }
 
   // sample deexcitation
   // here we assume that H2O electronic levels are the same as Oxygen.
@@ -402,13 +426,21 @@ TsDNARuddIonisationExtendedMultiModel::SampleSecondaries(std::vector<G4DynamicPa
 							   theIncomingTrack);
   } else {
     // extra electrons and one H2O(n+) track in place of n H2O+ tracks
-    std::vector<G4int> shells{shell};
-    for (std::size_t n = 0; n < extraShell.size(); ++n) {
-      G4ThreeVector dDir = GetAngularDistribution()->SampleDirectionForShell(dpart, extraEsec[n], Z, extraShell[n], couple->GetMaterial());
-      fvect->push_back(new G4DynamicParticle(G4Electron::Electron(), dDir, extraEsec[n]));
-      shells.push_back(extraShell[n]);
+    for (G4int n = 1; n < order; ++n) {
+      G4ThreeVector dDir;
+      G4double eN;
+      if (equalShare) {
+        // MJG05: the electrons leave 360/n degrees apart around the direction of the projectile
+        dDir = deltaDir;
+        dDir.rotate(CLHEP::twopi * n / order, dpart->GetMomentumDirection());
+        eN = eachEnergy;
+      } else {
+        dDir = GetAngularDistribution()->SampleDirectionForShell(dpart, extraEsec[n-1], Z, extraShell[n-1], couple->GetMaterial());
+        eN = extraEsec[n-1];
+      }
+      fvect->push_back(new G4DynamicParticle(G4Electron::Electron(), dDir, eN));
     }
-    TsDNAMultipleIonisation::CreateMultiplyIonisedWater(theIncomingTrack, shells);
+    TsDNAMultipleIonisation::CreateMultiplyIonisedWater(theIncomingTrack, order);
   }
 }
 
