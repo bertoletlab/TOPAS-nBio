@@ -48,6 +48,18 @@ G4double TsDNAMultipleIonisation::Alpha(const G4String& particle, G4double kinet
     return fScale * a;
 }
 
+G4double TsDNAMultipleIonisation::RescaleFactor(G4double kineticEnergy) const
+{
+    const std::size_t n = fRescaleE.size();
+    if ( n == 0 ) return 1.;
+    const G4double e = kineticEnergy / MeV;
+    if ( n == 1 || e <= fRescaleE.front() ) return fRescaleF.front();
+    if ( e >= fRescaleE.back() ) return fRescaleF.back();
+    std::size_t i = std::upper_bound(fRescaleE.begin(), fRescaleE.end(), e) - fRescaleE.begin();   // E[i-1] <= e < E[i]
+    const G4double t = (std::log(e) - std::log(fRescaleE[i-1])) / (std::log(fRescaleE[i]) - std::log(fRescaleE[i-1]));
+    return fRescaleF[i-1] + t * (fRescaleF[i] - fRescaleF[i-1]);
+}
+
 G4double TsDNAMultipleIonisation::CrossSectionFactor(const G4String& particle, G4double kineticEnergy) const
 {
     if ( !fActive ) return 1.;
@@ -57,7 +69,7 @@ G4double TsDNAMultipleIonisation::CrossSectionFactor(const G4String& particle, G
     for ( G4int n = 2; n <= fMaxOrder; ++n ) { w *= a; f += w; q += n * w; }
     // MJG05: the multiple cross sections are added to the single one (f). Gervais: one total cross section split among the degrees, so a q-fold event replaces
     // q singles and the event rate falls by the mean degree (f / q), which keeps the energy loss of the ion close to the uncorrelated value (GER06 p. 497).
-    return (fScheme == Gervais) ? f / q : f;
+    return (fScheme == Gervais) ? f / q : f * RescaleFactor(kineticEnergy);
 }
 
 G4int TsDNAMultipleIonisation::SampleOrder(const G4String& particle, G4double kineticEnergy) const

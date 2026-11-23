@@ -195,6 +195,12 @@ void TsEmDNAPhysics::ConstructProcess()
                 mi.Activate(true);
                 if ( fPm->ParameterExists(base + "Scale") ) mi.SetScale(fPm->GetUnitlessParameter(base + "Scale"));
                 if ( fPm->ParameterExists(base + "MaxOrder") ) mi.SetMaxOrder(fPm->GetIntegerParameter(base + "MaxOrder"));
+                if ( fPm->ParameterExists(base + "RescaleEnergies") && fPm->ParameterExists(base + "RescaleFactors") ) {
+                    const G4int nr = fPm->GetVectorLength(base + "RescaleEnergies");
+                    G4double* re = fPm->GetDoubleVector(base + "RescaleEnergies", "Energy");
+                    G4double* rf = fPm->GetUnitlessVector(base + "RescaleFactors");
+                    mi.SetRescale(std::vector<G4double>(re, re + nr), std::vector<G4double>(rf, rf + nr));
+                }
                 if ( fPm->ParameterExists(base + "Scheme") ) {
                     G4String sch = fPm->GetStringParameter(base + "Scheme"); G4StrUtil::to_lower(sch);
                     mi.SetScheme(sch == "gervais" ? TsDNAMultipleIonisation::Gervais : TsDNAMultipleIonisation::MJG05);

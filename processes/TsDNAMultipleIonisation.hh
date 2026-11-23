@@ -37,6 +37,11 @@ public:
     // Highest order of ionisation per event, 2 to 4 (default 4: quadruple ionisation, MJG05 channel R4 and the O2+ route of GER06).
     void SetMaxOrder(G4int n) { fMaxOrder = (n < 2) ? 2 : (n > 4 ? 4 : n); }
     G4int GetMaxOrder() const { return fMaxOrder; }
+    // LET rescaling of scheme MJG05 (MJG05 p. 6408 multiplied the ion cross sections by an energy-dependent factor so the LET matched Watt's values): a table of
+    // factors against kinetic energy (MeV, increasing), log-linear in energy, held at the end values outside, multiplying the event rate of the ionisation
+    // process wherever alpha > 0. Empty: factor 1. The factors are measured from the LET of physics-only decks (campaigns/gen_multiion_let.py).
+    void SetRescale(const std::vector<G4double>& energiesMeV, const std::vector<G4double>& factors) { fRescaleE = energiesMeV; fRescaleF = factors; }
+    G4double RescaleFactor(G4double kineticEnergy) const;
 
     // alpha of He2+ (applied to alpha, alpha+ and helium alike, Z = 2) at this kinetic energy: log-log interpolation of the curve of MJG05 Fig. 1; 0 outside
     // x = 0.15 to 2.97 (0.3 to 5.9 MeV/u) and for any other projectile.
@@ -66,6 +71,7 @@ private:
     G4int fMaxOrder{4};
     G4bool fActive{false};
     Scheme fScheme{MJG05};
+    std::vector<G4double> fRescaleE, fRescaleF;
 };
 
 #endif
